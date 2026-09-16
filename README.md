@@ -27,9 +27,8 @@ src/
 ├── control/    PID、VelocityNode、PositionNode（中间件三环起步）
 ├── persist/    CalibrationStore（NVS 标定固化，对标 STM32 Flash 双页）
 └── hmi/        SerialShell（串口调参命令行）
-examples/       01 电压力矩 → 02 速度环 → 03 位置环（渐进验证）
+examples/       算法主程序区：01 电压力矩 → 02 速度环 → 03 位置环（每个算法一个独立示例，持续新增）
 docs/           分层文档库（00_文档总览 为入口：需求/架构/验收合同/硬件档案/详细设计/验证记录）
-main/           main.ino = 01 号示例的入口副本
 ```
 
 ## 快速开始
