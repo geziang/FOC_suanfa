@@ -1,0 +1,19 @@
+# 参考资料（视频/安装包/PDF，体积大且不属于库源码）
+v4/
+
+# 第三方上位机工具（SimpleFOCStudio 源码与EXE发行包，不属于库源码）
+上位机源码/
+SimpleFOCStudio_EXE*/
+
+
+# 构建产物与IDE缓存
+build/
+*.hex
+*.bin
+.vscode/
+.pio/
+
+# 系统杂项
+Thumbs.db
+desktop.ini
+*.bak
