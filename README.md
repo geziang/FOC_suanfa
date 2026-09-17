@@ -27,7 +27,7 @@ src/
 ├── control/    PID、VelocityNode、PositionNode（中间件三环起步）
 ├── persist/    CalibrationStore（NVS 标定固化，对标 STM32 Flash 双页）
 └── hmi/        SerialShell（串口调参命令行）
-examples/       算法主程序区：01 电压力矩 → 02 速度环 → 03 位置环（每个算法一个独立示例，持续新增）
+examples/       算法主程序区：01 电压力矩 → 02 速度环 → 03 位置环 → 04 Studio调参（每个算法一个独立示例，持续新增）
 docs/           分层文档库（00_文档总览 为入口：需求/架构/验收合同/硬件档案/详细设计/验证记录）
 ```
 
@@ -41,7 +41,8 @@ docs/           分层文档库（00_文档总览 为入口：需求/架构/验�
    - Arduino IDE 会自动识别示例所属的本库；若未识别，做一次目录联接（管理员 cmd）：
      `mklink /J "%USERPROFILE%\Documents\Arduino\libraries\FocKit" "C:\Users\21153\Desktop\simplefoc"`
 4. **上电流程**：接 12V 供电（≥11.1V）→ 打开串口 115200 → 首次烧录会自动做编码器零位/方向标定并**写入 NVS**，断电重启自动注入，不再重复标定。
-5. 串口命令（见 `help`）：`on`/`off`、`t 0.01`（N·m）、`v 5`（rad/s）、`p 3.14`（rad）、`stream`（10Hz 状态流，串口绘图器可用）、`pid v kp ki kd`、`save`、`sel 0|1`（切电机）。
+5. 串口命令（见 `help`）：`on`/`off`、`t 0.01`（N·m）、`v 5`（rad/s）、`p 3.14`（rad）、`stream`（10Hz 状态流，串口绘图器可用）、`pid v kp ki kd`、`save`、`studio`（进 SimpleFOC Studio 会话）、`sel 0|1`（切电机）。
+6. **上位机调参（可选）**：跑示例 04，串口输 `studio` 后打开 SimpleFOCStudio（仓库根目录的 EXE）连接 115200——实时曲线 + 在线改参。注意 Studio 改的是 RAM 值，重启即失，调好后抄回代码；退出会话按板上复位。
 
 ## 硬件档案（真值见 docs/00 §6）
 

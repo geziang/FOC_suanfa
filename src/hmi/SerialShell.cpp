@@ -13,6 +13,12 @@ void SerialShell::begin(IMotor* motor, Stream& port) {
 void SerialShell::update() {
   if (port_ == nullptr || motor_ == nullptr) return;
 
+  // Studio 会话期：串口处理权让位给会话桥（Commander 独占解析）
+  if (studioMode_) {
+    if (studio_ != nullptr) studio_->update();
+    return;
+  }
+
   while (port_->available() > 0) {
     char c = (char)port_->read();
     if (c == '\n' || c == '\r') {
@@ -84,6 +90,15 @@ void SerialShell::dispatch_() {
                                : F("状态流关"));
   } else if (!strcmp(cmd, "save")) {
     motor_->saveCalibration();
+  } else if (!strcmp(cmd, "studio")) {
+    if (studio_ != nullptr) {
+      streaming_ = false;
+      studioMode_ = true;
+      port_->println(F("进入 SimpleFOC Studio 会话（独占串口），可在上位机连接 115200"));
+      port_->println(F("退出：按板上 EN/RST 复位；调好的增益请抄回代码（Studio 改动不落 NVS）"));
+    } else {
+      port_->println(F("未绑定 StudioBridge（见 attachStudio）"));
+    }
   } else if (!strcmp(cmd, "sel") && argc >= 2 && mgr_ != nullptr) {
     IMotor* m = mgr_->select(atoi(argv[1]));
     if (m != nullptr) {
@@ -107,6 +122,7 @@ void SerialShell::printHelp_() {
   port_->println(F("  st              打印一次状态"));
   port_->println(F("  stream          开关 10Hz 状态流"));
   port_->println(F("  save            固化标定到 NVS"));
+  port_->println(F("  studio          进入 SimpleFOC Studio 上位机会话（退出按复位）"));
   port_->println(F("  sel <0|1>       切换受控电机（需绑定 MotorManager）"));
 }
 

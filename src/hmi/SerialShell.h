@@ -4,6 +4,7 @@
 
 #include <Arduino.h>
 #include "core/IMotor.h"
+#include "core/ISerialSession.h"
 #include "control/VelocityNode.h"
 #include "control/PositionNode.h"
 #include "adapter/MotorManager.h"
@@ -16,6 +17,8 @@ public:
   void attachVelocityNode(VelocityNode* v) { vel_ = v; }
   void attachPositionNode(PositionNode* p) { pos_ = p; }
   void attachManager(MotorManager* mgr) { mgr_ = mgr; }
+  /// 绑定上位机会话桥（如 StudioBridge）；`studio` 命令进入会话后 shell 让位
+  void attachStudio(ISerialSession* s) { studio_ = s; }
 
   void update();
 
@@ -29,6 +32,8 @@ private:
   VelocityNode* vel_ = nullptr;
   PositionNode* pos_ = nullptr;
   MotorManager* mgr_ = nullptr;
+  ISerialSession* studio_ = nullptr;
+  bool studioMode_ = false;
 
   char buf_[48] = {0};
   int len_ = 0;

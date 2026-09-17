@@ -64,6 +64,10 @@ public:
   bool loadCalibration() override;
   bool hasSavedCalibration() override;
 
+  /// 仅供适配层内部使用（StudioBridge 等）。
+  /// 上层（control/app）触碰即违反分层契约（ARC-01 §2），不要调用。
+  BLDCMotor& rawMotor() { return motor_; }
+
 private:
   float torqueToVolts_(float torqueNm) const;
 
