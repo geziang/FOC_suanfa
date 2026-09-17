@@ -14,8 +14,8 @@ namespace fockit {
 class VelocityNode {
 public:
   /// 绑定电机并切入力矩模式。默认增益由官方 2208 电压域基线换算：
-  //   P=0.021 V/(rad/s)、I=0.12 V/(rad/s·s)，× KT/R = ×0.03/10.6
-  void begin(IMotor* m, float kp = 6.0e-5f, float ki = 3.5e-4f, float kd = 0.0f) {
+  //   P=0.021 V/(rad/s)、I=0.12 V/(rad/s·s)，× KT/R = ×0.0827/8.25 ≈ ×0.01（N·m 域）
+  void begin(IMotor* m, float kp = 2.1e-4f, float ki = 1.2e-3f, float kd = 0.0f) {
     m_ = m;
     pid_.setGains(kp, ki, kd);
     if (m_ != nullptr) m_->setMode(ControlMode::Torque);

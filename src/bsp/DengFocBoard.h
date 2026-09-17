@@ -33,34 +33,34 @@ constexpr int PIN_VIN_SENSE = 13;
 constexpr float VIN_SCALE = 8.5f / 1000.0f;  // mV → V
 constexpr float VIN_UNDERVOLT = 11.1f;       // 欠压阈值 [V]
 
-// ---- 2208 云台电机档案（规格书）----
+// ---- 2208-80T 云台电机档案（官方规格 2026-09-17 版，替代旧推算值）----
 struct MotorProfile {
-  int polePairs;         // 极对数（官方例程 BLDCMotor(7) 一致）
-  float lineResistance;  // [Ω] 线间（规格书“绕线电阻”）
-  float phaseResistance; // [Ω] 相电阻（星形：线间/2；歧义登记见 docs/00 §6.3）
-  float lineInductance;  // [H]  线间
-  float phaseInductance; // [H]  相电感（星形：线间/2）
+  int polePairs;         // 极对数
+  float lineResistance;  // [Ω] 线间（=2×相电阻，万用表验证用）
+  float phaseResistance; // [Ω] 相电阻（官方确认：单相绕组电阻）
+  float lineInductance;  // [H]  线间（星形串联推算 2×相电感，验证用）
+  float phaseInductance; // [H]  相电感（官方明确）
   float kv;              // [rpm/V]
-  float kt;              // [N·m/A]（规格书 0.03N·m 解读；KV 换算约 0.012~0.02，P1 辨识收口）
-  float ratedCurrent;    // [A]
-  float maxCurrent;      // [A]
+  float kt;              // [N·m/A] 公式初值 = 8.27/KV（SI 下 Ke=KT），T-P1-4 实测收口
+  float ratedCurrent;    // [A] 持续电流上限（官方 200~500mA 取上限）
+  float maxCurrent;      // [A] 峰值（官方未给，按持续上限执行）
   float ratedVoltage;    // [V]
 };
 
 constexpr MotorProfile MOTOR_2208 = {
     7,
-    21.2f, 10.6f,
-    0.0053f, 0.00265f,
-    110.0f,
-    0.03f,
-    0.8f, 4.5f,
+    16.5f, 8.25f,
+    0.0085f, 0.00425f,
+    100.0f,
+    0.0827f,
+    0.5f, 0.5f,
     12.0f};
 
 // ---- 安全默认限幅 ----
-// 电流上限取额定 0.8A（保护优先，需动态余量时由上层放宽，勿超 4.5A 峰值）
-// 电压上限 = 额定电流 × 相电阻 ≈ 8.5V，同时受实测母线电压钳制
+// 电流上限取官方持续范围上限 0.5A（峰值官方未给，按持续执行；瞬时过载须另立实验依据）
+// 电压上限 = 0.5A × 8.25Ω ≈ 4.1V，同时受实测母线电压钳制
 constexpr float DEFAULT_CURRENT_LIMIT = MOTOR_2208.ratedCurrent;
-constexpr float DEFAULT_TORQUE_LIMIT  = 0.03f;  // [N·m] ≈ 额定电流×KT
+constexpr float DEFAULT_TORQUE_LIMIT  = 0.03f;  // [N·m] 官方标称扭力（≈0.36A，落在持续带内）
 
 /// 上电早期初始化：复刻官方例程的启动仪式（相线输入上拉 + 12bit ADC），
 /// 必须在任何 driver.init() 之前调用一次。
