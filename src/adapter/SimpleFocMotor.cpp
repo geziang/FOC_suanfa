@@ -14,6 +14,9 @@ SimpleFocMotorConfig defaultM0Config() {
   c.scl = dengfoc_v4::M0_SCL;
   c.profile = dengfoc_v4::MOTOR_2208;
   c.currentLimit = dengfoc_v4::DEFAULT_CURRENT_LIMIT;
+  c.useCurrentSense = true;
+  c.csPinA = dengfoc_v4::M0_CS_PIN_A;
+  c.csPinB = dengfoc_v4::M0_CS_PIN_B;
   return c;
 }
 
@@ -29,6 +32,9 @@ SimpleFocMotorConfig defaultM1Config() {
   c.scl = dengfoc_v4::M1_SCL;
   c.profile = dengfoc_v4::MOTOR_2208;
   c.currentLimit = dengfoc_v4::DEFAULT_CURRENT_LIMIT;
+  c.useCurrentSense = true;
+  c.csPinA = dengfoc_v4::M1_CS_PIN_A;
+  c.csPinB = dengfoc_v4::M1_CS_PIN_B;
   return c;
 }
 
@@ -36,6 +42,8 @@ SimpleFocMotor::SimpleFocMotor(const SimpleFocMotorConfig& cfg)
     : cfg_(cfg),
       sensor_(AS5600_I2C),
       driver_(cfg.pinA, cfg.pinB, cfg.pinC, cfg.pinEnable),
+      currentSense_(dengfoc_v4::CURRENT_SENSE_SHUNT, dengfoc_v4::CURRENT_SENSE_GAIN,
+                    cfg.csPinA, cfg.csPinB),
       motor_(cfg.profile.polePairs),
       limits_(cfg.limits) {}
 
@@ -56,6 +64,12 @@ bool SimpleFocMotor::init() {
   driver_.voltage_power_supply = vin;
   if (!driver_.init()) return false;
   motor_.linkDriver(&driver_);
+
+  // 板载电流采样（15/16 课接法）：链接后 MT1/MT2 会话可用，id/iq 实测
+  if (cfg_.useCurrentSense && cfg_.csPinA >= 0 && cfg_.csPinB >= 0) {
+    currentSense_.init();
+    motor_.linkCurrentSense(&currentSense_);
+  }
 
   motor_.foc_modulation = FOCModulationType::SpaceVectorPWM;
 
@@ -172,6 +186,23 @@ void SimpleFocMotor::setLimits(const MotorLimits& lim) {
 }
 
 MotorLimits SimpleFocMotor::getLimits() { return limits_; }
+
+void SimpleFocMotor::setLoopGains(LoopType loop, const LoopGains& g) {
+  PIDController* pid = nullptr;
+  LowPassFilter* lpf = nullptr;
+  switch (loop) {
+    case LoopType::CurrentQ: pid = &motor_.PID_current_q; lpf = &motor_.LPF_current_q; break;
+    case LoopType::CurrentD: pid = &motor_.PID_current_d; lpf = &motor_.LPF_current_d; break;
+    case LoopType::Velocity: pid = &motor_.PID_velocity;  lpf = &motor_.LPF_velocity;  break;
+    case LoopType::Position: pid = &motor_.P_angle;       lpf = &motor_.LPF_angle;     break;
+  }
+  if (pid != nullptr) {
+    if (g.kp >= 0.0f) pid->P = g.kp;   // -1 = 不变更
+    if (g.ki >= 0.0f) pid->I = g.ki;
+    if (g.kd >= 0.0f) pid->D = g.kd;   // Position 环为 P 控制，仅 kp 生效
+  }
+  if (lpf != nullptr && g.lpfTf >= 0.0f) lpf->Tf = g.lpfTf;
+}
 
 void SimpleFocMotor::update() {
   if (!inited_) return;

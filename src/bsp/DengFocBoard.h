@@ -33,6 +33,14 @@ constexpr int PIN_VIN_SENSE = 13;
 constexpr float VIN_SCALE = 8.5f / 1000.0f;  // mV → V
 constexpr float VIN_UNDERVOLT = 11.1f;       // 欠压阈值 [V]
 
+// ---- 板载电流采样（InlineCurrentSense(shunt, gain, pinA, pinB)，15/16 课例程真值）----
+constexpr float CURRENT_SENSE_SHUNT = 0.01f;  // [Ω] 采样电阻
+constexpr float CURRENT_SENSE_GAIN = 50.0f;   // [V/V] 放大增益（INA240A2）→ 0.5 V/A
+constexpr int M0_CS_PIN_A = 39;
+constexpr int M0_CS_PIN_B = 36;
+constexpr int M1_CS_PIN_A = 35;
+constexpr int M1_CS_PIN_B = 34;
+
 // ---- 2208-80T 云台电机档案（官方规格 2026-09-17 版，替代旧推算值）----
 struct MotorProfile {
   int polePairs;         // 极对数

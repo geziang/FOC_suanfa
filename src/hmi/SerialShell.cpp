@@ -105,6 +105,8 @@ void SerialShell::dispatch_() {
       motor_ = m;
       port_->println(F("已切换受控电机（注意：已绑定的PID节点仍指向原电机）"));
     }
+  } else if (userCb_ != nullptr && userCb_(argc, argv)) {
+    // 用户自定义命令已消费（处理器自行打印反馈）
   } else {
     port_->println(F("未知命令，输入 help 查看"));
   }

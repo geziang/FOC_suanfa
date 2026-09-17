@@ -19,6 +19,9 @@ public:
   void attachManager(MotorManager* mgr) { mgr_ = mgr; }
   /// 绑定上位机会话桥（如 StudioBridge）；`studio` 命令进入会话后 shell 让位
   void attachStudio(ISerialSession* s) { studio_ = s; }
+  /// 注册用户自定义命令：未识别命令以已解析的 argc/argv 转发，
+  /// 返回 true 表示已处理（整定程序等示例专用，命令集由示例自定义）
+  void attachUserCommand(bool (*cb)(int argc, char* argv[])) { userCb_ = cb; }
 
   void update();
 
@@ -34,6 +37,7 @@ private:
   MotorManager* mgr_ = nullptr;
   ISerialSession* studio_ = nullptr;
   bool studioMode_ = false;
+  bool (*userCb_)(int argc, char* argv[]) = nullptr;
 
   char buf_[48] = {0};
   int len_ = 0;

@@ -47,6 +47,11 @@ public:
   virtual void setLimits(const MotorLimits& lim) = 0;
   virtual MotorLimits getLimits() = 0;
 
+  // ---------- 环增益整定配置 ----------
+  /// 注入环增益（整定程序用）。计算优先：初值由建模/带宽计算得出，
+  /// 上机微调后抄回代码。Position 环为 P 控制，仅 kp/lpfTf 生效。
+  virtual void setLoopGains(LoopType loop, const LoopGains& g) = 0;
+
   // ---------- 周期任务 ----------
   /// 每个控制拍调用一次：执行底层闭环并刷新状态缓存
   virtual void update() = 0;

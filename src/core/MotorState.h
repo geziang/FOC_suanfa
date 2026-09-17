@@ -25,4 +25,19 @@ struct MotorLimits {
   float maxPosition = 12.566371f;      // [rad] (+4π)
 };
 
+/// 环类型（整定配置用）
+enum class LoopType : uint8_t { CurrentQ, CurrentD, Velocity, Position };
+
+/// 环增益包（整定配置用）。
+/// 计算优先（SPEC-T §1）：初值来自建模与带宽计算，上机只在计算值附近微调；
+/// 未提供的项保持 -1（不变更）。
+struct LoopGains {
+  float kp;
+  float ki;
+  float kd;
+  float lpfTf;   // 反馈低通时间常数 [s]
+  LoopGains(float kp = -1.0f, float ki = -1.0f, float kd = -1.0f, float lpfTf = -1.0f)
+      : kp(kp), ki(ki), kd(kd), lpfTf(lpfTf) {}
+};
+
 } // namespace fockit

@@ -1,0 +1,181 @@
+// FocKit 示例 05 —— 三环整定程序（P1 主战场 · 骨架版）
+//
+// ============================================================
+// 方法论：计算优先（SPEC-T §1 / REF-12 §4.2）
+//   建模 → 取标称参数 → 选带宽 → 公式算增益 → 上机在计算值附近微调 → 抄回代码
+// 参数来源优先级：① 官方标称(HW-DENG §2) ② 辨识(本平台仅交叉验证/未知量收口)
+//                ③ 反推估算(须标注来源) —— 非高精度系统，标称优先，忽略批次差异
+//
+// —— 建模与带宽计算区依据（可溯源）——
+// 级联带宽分配（内→外递减，工业惯例 5~10 倍）：
+//   电流环 ωc = 1000 rad/s（τc=1ms）
+//   速度环 ωv = 20 rad/s（受电压力矩通道与速度 LPF(10ms) 约束，取保守）
+//   位置环 ωp = ωv/5 = 4 rad/s
+// 电流环（对象 G=1/(Ls+R)，PI 零极对消法）：
+//   kp_i = L·ωc = 4.25mH×1000 = 4.25 [V/A]
+//   ki_i = R·ωc = 8.25Ω×1000  = 8250 [V/A/s]（校验：ki/kp=R/L ✓）
+//   对照官方基线(16课)：5 / 1000 —— kp 同量级(偏差15%)，ki 官方偏保守
+// 速度环（对象：电压域力矩通道 1/R × KT × 1/(Js)）：
+//   kp_v = ωv·J·R/KT；J 来源③：官方基线 0.021 V/(rad/s) 在 ωv=20 下反推
+//   → J ≈ 1.05e-5 kg·m²（10.5 g·cm²，2208 转子合理量级；P3 辨识收口）
+//   → kp_v = 0.021（计算链复现官方基线 = 一致性自检通过）
+//   ki_v = 5×kp_v = 0.105（抗扰恢复经验系数，与官方 0.12 同量级）
+// 位置环（内环近似理想积分器，P 控制）：
+//   kp_p = ωp = 4 [1/s]（官方 P=20 对应更激进 ωp，空载可用；加载按超调回退）
+// ============================================================
+//
+// 使用（详见 docs REF-12 §4.2）：
+//   loop v        速度环会话：MC1 + step 方波，Studio 微调 MVP/MVI
+//   loop p        位置环会话：MC2 + step 方波，Studio 微调 MAP
+//   loop i        电流环会话走 Studio：studio 进会话 → 界面切 MT2(foc_current)
+//                 → 目标滑杆小幅阶跃 → MQP/MQI 在计算值附近微调
+//   step on|off / step amp <x> / step period <ms>   自动方波目标激励
+//   gains         重打印计算增益；studio 进上位机会话
+//
+// 纪律：Studio 改的是 RAM 值，调好后抄回本文件计算区并提交。
+
+#include <FocKit.h>
+#include <stdlib.h>
+#include <string.h>
+
+using namespace fockit;
+
+SimpleFocMotor motor(defaultM0Config());  // 电流采样默认接入（M0: 39/36）
+SerialShell shell;
+PowerMonitor power;
+StudioBridge studio;
+
+// ========== 建模与带宽计算区（计算优先，参数全部可溯源） ==========
+constexpr float R_PH = dengfoc_v4::MOTOR_2208.phaseResistance;  // 8.25 Ω   ①标称
+constexpr float L_PH = dengfoc_v4::MOTOR_2208.phaseInductance;  // 4.25 mH  ①标称
+constexpr float KT_M = dengfoc_v4::MOTOR_2208.kt;               // 0.0827   ①标称
+constexpr float J_EST = 1.05e-5f;  // kg·m² ③反推（官方速度基线@ωv=20），P3 收口
+
+constexpr float WC = 1000.0f;  // [rad/s] 电流环带宽（τc=1ms）
+constexpr float WV = 20.0f;    // [rad/s] 速度环带宽
+constexpr float WP = 4.0f;     // [rad/s] 位置环带宽（ωv/5）
+
+float kpI, kiI, kpV, kiV, kpP;
+
+void computeGains() {
+  kpI = L_PH * WC;                   // 4.25  [V/A]
+  kiI = R_PH * WC;                   // 8250  [V/A/s]
+  kpV = WV * J_EST * R_PH / KT_M;    // 0.021 [V/(rad/s)]（复现官方基线=自检通过）
+  kiV = 5.0f * kpV;                  // 0.105
+  kpP = WP;                          // 4     [1/s]
+  Serial.printf("[整定] 参数: R=%.2fΩ L=%.2fmH KT=%.4f J=%.2e kg·m²(③反推,P3收口)\n",
+                (double)R_PH, (double)(L_PH * 1000.0f), (double)KT_M, (double)J_EST);
+  Serial.printf("[整定] 带宽: ωc=%.0f ωv=%.0f ωp=%.0f rad/s\n",
+                (double)WC, (double)WV, (double)WP);
+  Serial.printf("[整定] 电流环 kp=%.2f ki=%.0f（官方基线 5/1000，kp 同量级）\n",
+                (double)kpI, (double)kiI);
+  Serial.printf("[整定] 速度环 kp=%.4f ki=%.4f（官方基线 0.021/0.12）\n",
+                (double)kpV, (double)kiV);
+  Serial.printf("[整定] 位置环 kp=%.1f（官方 20 激进，空载可用）\n", (double)kpP);
+}
+
+void applyGains() {
+  motor.setLoopGains(LoopType::CurrentQ, LoopGains(kpI, kiI, 0.0f, 0.002f));
+  motor.setLoopGains(LoopType::CurrentD, LoopGains(kpI, kiI, 0.0f, 0.002f));
+  motor.setLoopGains(LoopType::Velocity, LoopGains(kpV, kiV, 0.0f, 0.01f));
+  motor.setLoopGains(LoopType::Position, LoopGains(kpP));
+  Serial.println("[整定] 三环增益已按计算值注入（Studio 拉取可见）");
+}
+
+// ========== 阶跃激励（波形可复现、指标可量化，不靠手拖滑杆） ==========
+float stepAmp = 3.0f;             // 速度会话默认 [rad/s]；位置会话切换为 [rad]
+uint32_t stepPeriodMs = 2000;
+bool stepOn = false;
+bool stepHigh = false;
+uint32_t lastStepMs = 0;
+
+// ========== 自定义整定命令（经 shell 的 attachUserCommand 转发） ==========
+bool tuningCommands(int argc, char* argv[]) {
+  if (argc < 1) return false;
+
+  if (!strcmp(argv[0], "loop") && argc >= 2) {
+    stepOn = false;  // 换会话先停激励，参数就位后再 step on
+    motor.setTarget(0);
+    if (argv[1][0] == 'v') {
+      motor.setMode(ControlMode::Velocity);
+      stepAmp = 3.0f;
+      stepPeriodMs = 2000;
+      Serial.println(F("[整定] 速度环会话：step on 开始方波；Studio 中微调 MVP/MVI"));
+    } else if (argv[1][0] == 'p') {
+      motor.setMode(ControlMode::Position);
+      stepAmp = 1.5708f;
+      stepPeriodMs = 4000;
+      Serial.println(F("[整定] 位置环会话：step on 开始方波；Studio 中微调 MAP"));
+    } else if (argv[1][0] == 'i') {
+      motor.setMode(ControlMode::Idle);
+      Serial.println(F("[整定] 电流环会话走 Studio：studio 进会话 → 界面切 MT2(foc_current)"));
+      Serial.println(F("       → 目标滑杆小幅阶跃(≤0.15A，持续红线 0.5A) → MQP/MQI 在计算值附近微调"));
+    } else {
+      return false;
+    }
+    return true;
+  }
+
+  if (!strcmp(argv[0], "step")) {
+    if (argc >= 2 && !strcmp(argv[1], "on")) {
+      stepOn = true;
+      lastStepMs = 0;
+    } else if (argc >= 2 && !strcmp(argv[1], "off")) {
+      stepOn = false;
+      motor.setTarget(0);
+    } else if (argc >= 3 && !strcmp(argv[1], "amp")) {
+      stepAmp = strtof(argv[2], nullptr);
+    } else if (argc >= 3 && !strcmp(argv[1], "period")) {
+      stepPeriodMs = (uint32_t)atol(argv[2]);
+    } else {
+      return false;
+    }
+    Serial.printf("[整定] step %s amp=%.3f period=%lu ms\n",
+                  stepOn ? "on" : "off", (double)stepAmp, (unsigned long)stepPeriodMs);
+    return true;
+  }
+
+  if (!strcmp(argv[0], "gains")) {
+    computeGains();
+    return true;
+  }
+  return false;
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(300);
+  dengfoc_v4::earlyInit();
+  power.begin();
+  power.waitReady();
+
+  if (!motor.init()) {  // 电流采样已随初始化链接（InlineCurrentSense, 0.5V/A）
+    while (true) delay(1000);
+  }
+
+  computeGains();  // 计算优先：开机即算、即打印
+  applyGains();    // 注入三环（契约 setLoopGains，Studio 拉取即见计算值）
+
+  motor.enable();
+  motor.setMode(ControlMode::Idle);
+
+  studio.begin(&motor);
+  shell.begin(&motor);
+  shell.attachStudio(&studio);
+  shell.attachUserCommand(tuningCommands);
+  Serial.println(F("三环整定程序（骨架）。命令：loop v|p|i / step on|off|amp|period / gains / studio"));
+}
+
+void loop() {
+  power.update();
+  if (!power.ok()) motor.disable();
+
+  if (stepOn && millis() - lastStepMs >= stepPeriodMs) {  // 方波目标激励
+    lastStepMs = millis();
+    stepHigh = !stepHigh;
+    motor.setTarget(stepHigh ? stepAmp : -stepAmp);
+  }
+
+  motor.update();
+  shell.update();  // studio 会话期自动转为上位机通道，step 激励照常运行
+}

@@ -29,6 +29,9 @@ struct SimpleFocMotorConfig {
   float currentLimit = dengfoc_v4::DEFAULT_CURRENT_LIMIT;  // [A]
   MotorLimits limits;                 // 目标限幅（默认见 core/MotorState.h）
   bool monitor = true;                // SimpleFOC 初始化/标定日志
+  bool useCurrentSense = true;        // 板载 inline 电流采样（链接后 MT1/MT2 可用，id/iq 实测）
+  int csPinA = -1;                    // 电流采样 A 相引脚
+  int csPinB = -1;                    // 电流采样 B 相引脚
 };
 
 class SimpleFocMotor : public IMotor {
@@ -58,6 +61,8 @@ public:
   void setLimits(const MotorLimits& lim) override;
   MotorLimits getLimits() override;
 
+  void setLoopGains(LoopType loop, const LoopGains& g) override;
+
   void update() override;
 
   bool saveCalibration() override;
@@ -75,6 +80,7 @@ private:
   SimpleFocMotorConfig cfg_;
   MagneticSensorI2C sensor_;
   BLDCDriver3PWM driver_;
+  InlineCurrentSense currentSense_;
   BLDCMotor motor_;
   CalibrationStore store_;
 
