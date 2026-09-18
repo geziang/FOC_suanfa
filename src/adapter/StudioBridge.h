@@ -33,10 +33,12 @@ public:
   void begin(SimpleFocMotor* m) {
     motor_ = m;
     self_ = this;
+    if (dbgPort_) dbgPort_->println(F("[FW STUDIO] begin: registering Commander ID=M"));
     BLDCMotor& bm = m->rawMotor();
     bm.monitor_variables = _MON_TARGET | _MON_VEL | _MON_ANGLE;
     bm.monitor_downsample = 0;  // 初始静默，由 Studio 端开启数据流
     cmd_.add('M', StudioBridge::onMotorCmd_, "motor");
+    if (dbgPort_) dbgPort_->println(F("[FW STUDIO] begin complete"));
   }
 
   // ISerialSession：会话期独占串口收发
@@ -63,6 +65,8 @@ private:
   Stream* dbgPort_ = nullptr;
   bool trace_ = false;
   uint32_t lastSnapMs_ = 0;
+  uint32_t lastUpdateHeartbeatMs_ = 0;
+  uint32_t updateCount_ = 0;
 };
 
 } // namespace fockit

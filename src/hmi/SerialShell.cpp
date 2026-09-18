@@ -7,6 +7,7 @@ namespace fockit {
 void SerialShell::begin(IMotor* motor, Stream& port) {
   motor_ = motor;
   port_ = &port;
+  port_->println(F("[FW SHELL] begin: motor/serial bound"));
   port_->println(F("FocKit shell 就绪，输入 help 查看命令"));
 }
 
@@ -15,7 +16,16 @@ void SerialShell::update() {
 
   // Studio 会话期：串口处理权让位给会话桥（Commander 独占解析）
   if (studioMode_) {
-    if (studio_ != nullptr) studio_->update();
+    if (studio_ != nullptr) {
+      studio_->update();
+      uint32_t now = millis();
+      if (now - lastStudioHeartbeatMs_ >= 1000) {
+        lastStudioHeartbeatMs_ = now;
+        port_->println(F("[FW SHELL] studio update returned"));
+      }
+    } else {
+      port_->println(F("[FW SHELL] studio mode set but bridge is null"));
+    }
     return;
   }
 
@@ -52,6 +62,10 @@ void SerialShell::dispatch_() {
     tok = strtok(nullptr, " \t");
   }
   if (argc == 0) return;
+  port_->print(F("[FW SHELL] dispatch raw='"));
+  port_->print(rawLine);
+  port_->print(F("' argc="));
+  port_->println(argc);
   for (char* p = argv[0]; *p != 0; ++p) *p = (char)tolower(*p);
 
   const char* cmd = argv[0];
@@ -97,13 +111,17 @@ void SerialShell::dispatch_() {
   } else if (!strcmp(cmd, "save")) {
     motor_->saveCalibration();
   } else if (!strcmp(cmd, "studio")) {
+    port_->println(F("[FW SHELL] entering Studio mode"));
     if (studio_ != nullptr) {
       streaming_ = false;
       studioMode_ = true;
+      lastStudioHeartbeatMs_ = millis();
       port_->println(F("进入 SimpleFOC Studio 会话（独占串口），可在上位机连接 115200"));
       port_->println(F("退出：按板上 EN/RST 复位；调好的增益请抄回代码（Studio 改动不落 NVS）"));
+      port_->println(F("[FW SHELL] studio mode enabled; waiting for Commander M..."));
     } else {
       port_->println(F("未绑定 StudioBridge（见 attachStudio）"));
+      port_->println(F("[FW SHELL] studio attach is null"));
     }
   } else if (!strcmp(cmd, "dbg") && argc >= 2) {
     bool on = (!strcmp(argv[1], "on") || !strcmp(argv[1], "1"));
@@ -127,6 +145,7 @@ void SerialShell::dispatch_() {
     // 若上位机已连接却走到这里，说明固件还在 shell、没有进入 studio 会话，
     // 或 Studio 连接对话框的命令ID 没填 M（裸命令 Commander 会静默丢弃）。
     if (upperHead) {
+      port_->println(F("[FW SHELL] uppercase protocol command received while shell active"));
       port_->println(F("[Studio] 收到大写协议命令，但当前在 FocKit shell（未进上位机会话）"));
       port_->println(F("[Studio] 处理：串口终端先输 studio 再连接；Studio 连接对话框命令ID 必须填 M"));
     } else {

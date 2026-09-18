@@ -8,15 +8,30 @@ StudioBridge* StudioBridge::self_ = nullptr;
 void StudioBridge::setTrace(bool on) {
   trace_ = on;
   if (!dbgPort_) return;
-  dbgPort_->print(F("[Studio] 调试探针已"));
+  dbgPort_->print(F("[FW STUDIO] 调试探针已"));
   dbgPort_->println(on ? F("开启：逐条命令回显 + 1s 状态快照")
                        : F("关闭：仅保留按钮设置确认"));
 }
 
 void StudioBridge::update() {
-  if (motor_ == nullptr) return;
+  if (motor_ == nullptr) {
+    if (dbgPort_) dbgPort_->println(F("[FW STUDIO] update skipped: motor is null"));
+    return;
+  }
+  ++updateCount_;
+  bool serialPending = dbgPort_ && dbgPort_->available() > 0;
+  if (trace_ && serialPending) dbgPort_->println(F("[FW STUDIO] cmd.run enter"));
   cmd_.run();
+  if (trace_ && serialPending) dbgPort_->println(F("[FW STUDIO] cmd.run returned"));
   motor_->rawMotor().monitor();
+  if (trace_ && dbgPort_) {
+    uint32_t now = millis();
+    if (now - lastUpdateHeartbeatMs_ >= 1000) {
+      lastUpdateHeartbeatMs_ = now;
+      dbgPort_->print(F("[FW STUDIO] update heartbeat count="));
+      dbgPort_->println(updateCount_);
+    }
+  }
   if (trace_) {
     uint32_t now = millis();
     if (now - lastSnapMs_ >= 1000) {
@@ -27,7 +42,11 @@ void StudioBridge::update() {
 }
 
 void StudioBridge::onMotorCmd_(char* cmd) {
-  if (self_ == nullptr || self_->motor_ == nullptr) return;
+  if (self_ == nullptr) return;
+  if (self_->motor_ == nullptr) {
+    if (self_->dbgPort_) self_->dbgPort_->println(F("[FW STUDIO] callback dropped: motor is null"));
+    return;
+  }
 
   // 先拷贝可打印副本：Commander.target() 内部 strtok 会破坏原串
   char raw[24];
@@ -39,11 +58,16 @@ void StudioBridge::onMotorCmd_(char* cmd) {
 
   bool isGet = isGetCmd_(raw);
   if (self_->trace_ && self_->dbgPort_) {
-    self_->dbgPort_->print(F("[Studio] 收到 M"));
-    self_->dbgPort_->println(raw);
+    self_->dbgPort_->print(F("[FW STUDIO] callback received raw='M"));
+    self_->dbgPort_->print(raw);
+    self_->dbgPort_->println(F("'"));
+    self_->dbgPort_->print(F("[FW STUDIO] command class="));
+    self_->dbgPort_->println(isGet ? F("get") : F("set"));
   }
 
+  if (self_->trace_ && self_->dbgPort_) self_->dbgPort_->println(F("[FW STUDIO] forwarding to SimpleFOC"));
   self_->cmd_.motor(&self_->motor_->rawMotor(), cmd);  // 先执行（生效）
+  if (self_->trace_ && self_->dbgPort_) self_->dbgPort_->println(F("[FW STUDIO] forwarding returned"));
 
   if (!isGet) self_->describeSet_(raw);  // 再回读，打印确认
 }

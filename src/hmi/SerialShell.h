@@ -43,6 +43,7 @@ private:
   int len_ = 0;
   bool streaming_ = false;
   uint32_t lastStreamMs_ = 0;
+  uint32_t lastStudioHeartbeatMs_ = 0;
 };
 
 } // namespace fockit

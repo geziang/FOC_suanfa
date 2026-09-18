@@ -77,6 +77,7 @@ constexpr float WP = 4.0f;     // [rad/s] 位置环带宽（ωv/5）
 float kpI, kiI, kpV, kiV, kpP;
 
 void computeGains() {
+  Serial.println(F("[FW BOOT] computeGains enter"));
   kpI = L_PH * WC;                   // 4.25  [V/A]
   kiI = R_PH * WC;                   // 8250  [V/A/s]
   kpV = WV * J_EST * R_PH / KT_M;    // 0.021 [V/(rad/s)]（复现官方基线=自检通过）
@@ -91,14 +92,17 @@ void computeGains() {
   Serial.printf("[整定] 速度环 kp=%.4f ki=%.4f（官方基线 0.021/0.12）\n",
                 (double)kpV, (double)kiV);
   Serial.printf("[整定] 位置环 kp=%.1f（官方 20 激进，空载可用）\n", (double)kpP);
+  Serial.println(F("[FW BOOT] computeGains returned"));
 }
 
 void applyGains() {
+  Serial.println(F("[FW BOOT] applyGains enter"));
   motor.setLoopGains(LoopType::CurrentQ, LoopGains(kpI, kiI, 0.0f, 0.002f));
   motor.setLoopGains(LoopType::CurrentD, LoopGains(kpI, kiI, 0.0f, 0.002f));
   motor.setLoopGains(LoopType::Velocity, LoopGains(kpV, kiV, 0.0f, 0.01f));
   motor.setLoopGains(LoopType::Position, LoopGains(kpP));
   Serial.println("[整定] 三环增益已按计算值注入（Studio 拉取可见）");
+  Serial.println(F("[FW BOOT] applyGains returned"));
 }
 
 // ========== 阶跃激励（波形可复现、指标可量化，不靠手拖滑杆） ==========
@@ -144,9 +148,11 @@ bool tuningCommands(int argc, char* argv[]) {
     if (argc >= 2 && !strcmp(argv[1], "on")) {
       stepOn = true;
       lastStepMs = 0;
+      Serial.println(F("[FW TUNE] step enabled"));
     } else if (argc >= 2 && !strcmp(argv[1], "off")) {
       stepOn = false;
       motor.setTarget(0);
+      Serial.println(F("[FW TUNE] step disabled"));
     } else if (argc >= 3 && !strcmp(argv[1], "amp")) {
       stepAmp = strtof(argv[2], nullptr);
     } else if (argc >= 3 && !strcmp(argv[1], "period")) {
@@ -168,14 +174,21 @@ bool tuningCommands(int argc, char* argv[]) {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println(F("[FW BOOT] Serial.begin done"));
   delay(300);
   dengfoc_v4::earlyInit();
+  Serial.println(F("[FW BOOT] earlyInit done"));
   power.begin();
+  Serial.println(F("[FW BOOT] power.begin done"));
   power.waitReady();
+  Serial.println(F("[FW BOOT] power.waitReady returned"));
 
+  Serial.println(F("[FW BOOT] motor.init enter"));
   if (!motor.init()) {  // 电流采样已随初始化链接（InlineCurrentSense, 0.5V/A）
+    Serial.println(F("[FW BOOT] motor.init failed; halted"));
     while (true) delay(1000);
   }
+  Serial.println(F("[FW BOOT] motor.init returned ok"));
 
   computeGains();  // 计算优先：开机即算、即打印
   applyGains();    // 注入三环（契约 setLoopGains，Studio 拉取即见计算值）
@@ -184,22 +197,42 @@ void setup() {
   motor.setMode(ControlMode::Idle);
 
   studio.begin(&motor);
+  Serial.println(F("[FW BOOT] studio.begin returned"));
   shell.begin(&motor);
+  Serial.println(F("[FW BOOT] shell.begin returned"));
   shell.attachStudio(&studio);
+  Serial.println(F("[FW BOOT] shell.attachStudio done"));
   shell.attachUserCommand(tuningCommands);
+  Serial.println(F("[FW BOOT] shell.attachUserCommand done"));
   Serial.println(F("三环整定主程序就绪。命令：loop t|v|p|i / step on|off|amp|period / gains / t|v|p / stream / studio（help 查全部）"));
+  Serial.println(F("[FW BOOT] setup complete"));
 }
 
 void loop() {
+  static uint32_t lastLoopLogMs = 0;
+  static bool lastPowerOk = false;
   power.update();
-  if (!power.ok()) motor.disable();
+  bool powerOk = power.ok();
+  if (powerOk != lastPowerOk) {
+    lastPowerOk = powerOk;
+    Serial.print(F("[FW LOOP] power.ok="));
+    Serial.println(powerOk ? F("true") : F("false"));
+  }
+  if (!powerOk) motor.disable();
 
   if (stepOn && millis() - lastStepMs >= stepPeriodMs) {  // 方波目标激励
     lastStepMs = millis();
     stepHigh = !stepHigh;
     motor.setTarget(stepHigh ? stepAmp : -stepAmp);
+    Serial.print(F("[FW LOOP] step target="));
+    Serial.println(stepHigh ? stepAmp : -stepAmp, 4);
   }
 
   motor.update();
   shell.update();  // studio 会话期自动转为上位机通道，step 激励照常运行
+  uint32_t now = millis();
+  if (now - lastLoopLogMs >= 1000) {
+    lastLoopLogMs = now;
+    Serial.println(F("[FW LOOP] alive"));
+  }
 }
