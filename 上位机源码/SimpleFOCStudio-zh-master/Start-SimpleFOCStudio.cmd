@@ -1,3 +1,2 @@
 @echo off
-call "%~dp0启动SimpleFOCStudio.cmd"
-exit /b %ERRORLEVEL%
+cscript.exe //nologo "%~dp0Start-SimpleFOCStudio.vbs"
