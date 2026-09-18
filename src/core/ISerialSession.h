@@ -13,6 +13,9 @@ public:
   virtual ~ISerialSession() {}
   /// 会话期独占串口收发，每控制拍调用一次
   virtual void update() = 0;
+  /// 诊断探针开关（默认空实现；会话实现可覆盖）。
+  /// 关闭时仍应保留最低限度的"设置类按钮确认打印"，开启后追加逐条命令回显与周期快照。
+  virtual void setTrace(bool /*on*/) {}
 };
 
 } // namespace fockit

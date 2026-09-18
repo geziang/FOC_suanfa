@@ -38,7 +38,14 @@
 //                 → 目标滑杆小幅阶跃(≤0.15A，持续红线 0.5A) → MQP/MQI 在计算值附近微调
 //   step on|off / step amp <x> / step period <ms>   自动方波激励（幅值单位随当前会话）
 //   gains         重打印计算增益；t/v/p <目标> 直接给目标；stream 开 10Hz 状态流
+//   dbg on|off    Studio 探针：按钮设置确认默认常开；on 追加逐条命令回显 + 1s 状态快照
 //   studio        进 SimpleFOC Studio 上位机会话（退出按板上 EN/RST 复位）
+//
+// 上位机连接时序（顺序反了会 Write timeout / 参数全零 / 按钮无响应）：
+//   1) 先接 12V，等打印"电源就绪""三环整定主程序就绪"（仅 USB 供电会卡在等待上电）
+//   2) 串口终端输 studio（要深度探针先 dbg on），然后关闭终端释放 COM 口
+//   3) Studio 连接对话框：命令ID 填 M、115200、勾选 Pull config
+//   4) 每次按板上 EN/RST 复位后，必须重新执行第 2 步
 //
 // 整定顺序（由内到外，内环不收敛不要进外环）：
 //   loop t 链路冒烟 → loop i 电流环 → loop v 速度环 → loop p 位置环

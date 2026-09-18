@@ -10,14 +10,26 @@ void PowerMonitor::begin(float underVolt, uint32_t periodMs) {
 }
 
 void PowerMonitor::waitReady() {
+  uint32_t dropped = 0;
   float vin = dengfoc_v4::readVin();
   while (vin <= underVolt_) {
     Serial.printf("等待上电, 当前电压%.2fV\n", vin);
     delay(100);
+    // 未就绪期间 shell/Commander 均未启动，若上位机此刻已连接并连发命令
+    // （如 SimpleFOC Studio 的 pull config），接收缓冲会被灌满并导致对端 Write timeout。
+    // 这里直接排空丢弃：未就绪阶段收到的任何命令本就无法处理。
+    while (Serial.available()) {
+      Serial.read();
+      ++dropped;
+    }
     vin = dengfoc_v4::readVin();
   }
   lastVin_ = vin;
   Serial.printf("电源就绪 %.2fV\n", vin);
+  if (dropped > 0) {
+    Serial.printf("[提示] 电源就绪前丢弃 %lu 字节串口数据；请在“主程序就绪”后再连接上位机\n",
+                  (unsigned long)dropped);
+  }
 }
 
 void PowerMonitor::update() {

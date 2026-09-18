@@ -40,6 +40,12 @@ void SerialShell::update() {
 void SerialShell::dispatch_() {
   char* argv[6];
   int argc = 0;
+  // strtok 与随后的小写化都会改写 buf_，先留存原始行，供未知命令回显/大写协议检测
+  char rawLine[48];
+  strncpy(rawLine, buf_, sizeof(rawLine) - 1);
+  rawLine[sizeof(rawLine) - 1] = 0;
+  bool upperHead = (rawLine[0] >= 'A' && rawLine[0] <= 'Z');
+
   char* tok = strtok(buf_, " \t");
   while (tok != nullptr && argc < 6) {
     argv[argc++] = tok;
@@ -99,6 +105,13 @@ void SerialShell::dispatch_() {
     } else {
       port_->println(F("未绑定 StudioBridge（见 attachStudio）"));
     }
+  } else if (!strcmp(cmd, "dbg") && argc >= 2) {
+    bool on = (!strcmp(argv[1], "on") || !strcmp(argv[1], "1"));
+    if (studio_ != nullptr) {
+      studio_->setTrace(on);
+    } else {
+      port_->println(F("未挂载上位机会话（attachStudio 为空）"));
+    }
   } else if (!strcmp(cmd, "sel") && argc >= 2 && mgr_ != nullptr) {
     IMotor* m = mgr_->select(atoi(argv[1]));
     if (m != nullptr) {
@@ -108,7 +121,17 @@ void SerialShell::dispatch_() {
   } else if (userCb_ != nullptr && userCb_(argc, argv)) {
     // 用户自定义命令已消费（处理器自行打印反馈）
   } else {
-    port_->println(F("未知命令，输入 help 查看"));
+    port_->print(F("未知命令："));
+    port_->println(rawLine);
+    // 大写字母开头是 SimpleFOC Studio 协议命令的特征（MC/MVP/ME1…）。
+    // 若上位机已连接却走到这里，说明固件还在 shell、没有进入 studio 会话，
+    // 或 Studio 连接对话框的命令ID 没填 M（裸命令 Commander 会静默丢弃）。
+    if (upperHead) {
+      port_->println(F("[Studio] 收到大写协议命令，但当前在 FocKit shell（未进上位机会话）"));
+      port_->println(F("[Studio] 处理：串口终端先输 studio 再连接；Studio 连接对话框命令ID 必须填 M"));
+    } else {
+      port_->println(F("输入 help 查看全部命令"));
+    }
   }
 }
 
@@ -124,6 +147,7 @@ void SerialShell::printHelp_() {
   port_->println(F("  st              打印一次状态"));
   port_->println(F("  stream          开关 10Hz 状态流"));
   port_->println(F("  save            固化标定到 NVS"));
+  port_->println(F("  dbg on|off      Studio 调试探针（进 studio 前设置；按钮确认默认常开）"));
   port_->println(F("  studio          进入 SimpleFOC Studio 上位机会话（退出按复位）"));
   port_->println(F("  sel <0|1>       切换受控电机（需绑定 MotorManager）"));
 }
