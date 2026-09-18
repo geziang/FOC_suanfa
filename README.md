@@ -27,7 +27,7 @@ src/
 ├── control/    PID、VelocityNode、PositionNode（中间件三环起步）
 ├── persist/    CalibrationStore（NVS 标定固化，对标 STM32 Flash 双页）
 └── hmi/        SerialShell（串口调参命令行）
-examples/       算法主程序区：01 电压力矩 → 02 速度环 → 03 位置环 → 04 Studio调参 → 05 三环整定（每个算法一个独立示例，持续新增）
+examples/       唯一主程序 FocKit_commissioning：电压力矩冒烟 + 三环（电流/速度/位置）整定 + Studio 上位机会话
 docs/           分层文档库（00_文档总览 为入口：需求/架构/验收合同/硬件档案/详细设计/验证记录）
 ```
 
@@ -37,12 +37,14 @@ docs/           分层文档库（00_文档总览 为入口：需求/架构/验�
    - ESP32 开发板支持 ≥ 2.0.4（离线包在 `v4/1、V4到手资料/`，或开发板管理器在线装）
    - 库管理器搜索 **Simple FOC** 安装（≥ 2.2.1，官方例程实测版本）
 2. **选板卡**：`ESP32 Dev Module`
-3. **打开示例**：`examples/FocKit_01_torque_voltage/FocKit_01_torque_voltage.ino`
+3. **打开唯一主程序**：`examples/FocKit_commissioning/FocKit_commissioning.ino`
    - Arduino IDE 会自动识别示例所属的本库；若未识别，做一次目录联接（管理员 cmd）：
      `mklink /J "%USERPROFILE%\Documents\Arduino\libraries\FocKit" "C:\Users\21153\Desktop\simplefoc"`
-4. **上电流程**：接 12V 供电（≥11.1V）→ 打开串口 115200 → 首次烧录会自动做编码器零位/方向标定并**写入 NVS**，断电重启自动注入，不再重复标定。
-5. 串口命令（见 `help`）：`on`/`off`、`t 0.01`（N·m）、`v 5`（rad/s）、`p 3.14`（rad）、`stream`（10Hz 状态流，串口绘图器可用）、`pid v kp ki kd`、`save`、`studio`（进 SimpleFOC Studio 会话）、`sel 0|1`（切电机）。
-6. **上位机调参（可选）**：跑示例 04，串口输 `studio` 后打开 SimpleFOCStudio（仓库根目录的 EXE）连接 115200——实时曲线 + 在线改参。注意 Studio 改的是 RAM 值，重启即失，调好后抄回代码；退出会话按板上复位。
+4. **上电流程**：接 12V 供电（≥11.1V）→ 打开串口 115200 → 首次烧录会自动做编码器零位/方向标定并**写入 NVS**，断电重启自动注入，不再重复标定。开机即按标称参数计算三环增益并注入（串口打印计算链）。
+5. 串口命令（见 `help`）：
+   - 基础：`on`/`off`、`t 0.01`（N·m）、`v 5`（rad/s）、`p 3.14`（rad）、`stream`（10Hz 状态流，串口绘图器可用）、`save`、`studio`（进 SimpleFOC Studio 会话）、`sel 0|1`（切电机）；
+   - 整定：`loop t|v|p|i`（切力矩/速度/位置/电流环会话）、`step on|off|amp|period`（可复现方波激励）、`gains`（复看计算增益）。整定顺序由内到外：力矩冒烟 → 电流环 → 速度环 → 位置环。
+6. **上位机调参**：主程序串口输 `studio` 让位后，打开 SimpleFOCStudio（仓库根目录的 EXE）连接 115200——实时曲线 + 在线改参。注意 Studio 改的是 RAM 值，重启即失，调好后抄回主程序计算区；退出会话按板上复位。
 
 ## 硬件档案（真值见 docs/00 §6）
 

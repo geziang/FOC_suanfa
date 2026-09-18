@@ -1,4 +1,10 @@
-// FocKit 示例 05 —— 三环整定程序（P1 主战场 · 骨架版）
+// FocKit 唯一示例 —— 电机三环整定主程序
+// （commissioning：工业伺服上电调试惯例，由内到外 电流环 → 速度环 → 位置环）
+//
+// 硬件：DengFOC V4 + 2208 云台电机(7对极) + AS5600（M0 编码器口：SDA19/SCL18）
+// 供电：DC 12V（≥11.1V，欠压自动失使能）；首次烧录自动做编码器零位/方向标定并写入
+//       NVS，断电重启自动注入，不再重复标定。
+// 本程序集成全部上机场景：电压力矩冒烟、速度/位置/电流环整定、SimpleFOC Studio 上位机会话。
 //
 // ============================================================
 // 方法论：计算优先（SPEC-T §1 / REF-12 §4.2）
@@ -25,14 +31,20 @@
 // ============================================================
 //
 // 使用（详见 docs REF-12 §4.2）：
-//   loop v        速度环会话：MC1 + step 方波，Studio 微调 MVP/MVI
-//   loop p        位置环会话：MC2 + step 方波，Studio 微调 MAP
+//   loop t        电压力矩会话：step on 跑 ±0.01 N·m 方波（3s 一拍，链路冒烟）
+//   loop v        速度环会话：step 方波(±3 rad/s, 2s)，Studio 微调 MVP/MVI
+//   loop p        位置环会话：step 方波(±π/2 rad, 4s)，Studio 微调 MAP
 //   loop i        电流环会话走 Studio：studio 进会话 → 界面切 MT2(foc_current)
-//                 → 目标滑杆小幅阶跃 → MQP/MQI 在计算值附近微调
-//   step on|off / step amp <x> / step period <ms>   自动方波目标激励
-//   gains         重打印计算增益；studio 进上位机会话
+//                 → 目标滑杆小幅阶跃(≤0.15A，持续红线 0.5A) → MQP/MQI 在计算值附近微调
+//   step on|off / step amp <x> / step period <ms>   自动方波激励（幅值单位随当前会话）
+//   gains         重打印计算增益；t/v/p <目标> 直接给目标；stream 开 10Hz 状态流
+//   studio        进 SimpleFOC Studio 上位机会话（退出按板上 EN/RST 复位）
 //
-// 纪律：Studio 改的是 RAM 值，调好后抄回本文件计算区并提交。
+// 整定顺序（由内到外，内环不收敛不要进外环）：
+//   loop t 链路冒烟 → loop i 电流环 → loop v 速度环 → loop p 位置环
+//
+// 纪律：Studio/串口改的是 RAM 值，重启即失；调好后抄回本文件计算区并提交，
+//       NVS 只固化编码器标定。
 
 #include <FocKit.h>
 #include <stdlib.h>
@@ -83,7 +95,7 @@ void applyGains() {
 }
 
 // ========== 阶跃激励（波形可复现、指标可量化，不靠手拖滑杆） ==========
-float stepAmp = 3.0f;             // 速度会话默认 [rad/s]；位置会话切换为 [rad]
+float stepAmp = 3.0f;             // 方波幅值，单位随会话：力矩[N·m]/速度[rad/s]/位置[rad]
 uint32_t stepPeriodMs = 2000;
 bool stepOn = false;
 bool stepHigh = false;
@@ -96,7 +108,12 @@ bool tuningCommands(int argc, char* argv[]) {
   if (!strcmp(argv[0], "loop") && argc >= 2) {
     stepOn = false;  // 换会话先停激励，参数就位后再 step on
     motor.setTarget(0);
-    if (argv[1][0] == 'v') {
+    if (argv[1][0] == 't') {
+      motor.setMode(ControlMode::Torque);
+      stepAmp = 0.01f;      // [N·m] 电压力矩（适配层内完成 N·m→A→V 换算并限幅）
+      stepPeriodMs = 3000;
+      Serial.println(F("[整定] 电压力矩会话：step on 开始 ±0.01 N·m 方波（3s 一拍）"));
+    } else if (argv[1][0] == 'v') {
       motor.setMode(ControlMode::Velocity);
       stepAmp = 3.0f;
       stepPeriodMs = 2000;
@@ -163,7 +180,7 @@ void setup() {
   shell.begin(&motor);
   shell.attachStudio(&studio);
   shell.attachUserCommand(tuningCommands);
-  Serial.println(F("三环整定程序（骨架）。命令：loop v|p|i / step on|off|amp|period / gains / studio"));
+  Serial.println(F("三环整定主程序就绪。命令：loop t|v|p|i / step on|off|amp|period / gains / t|v|p / stream / studio（help 查全部）"));
 }
 
 void loop() {
