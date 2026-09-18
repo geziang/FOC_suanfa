@@ -48,27 +48,54 @@ SimpleFocMotor::SimpleFocMotor(const SimpleFocMotorConfig& cfg)
       limits_(cfg.limits) {}
 
 bool SimpleFocMotor::init() {
-  if (inited_) return true;
+  Serial.printf("[EXP MOTOR] init enter id='%s' inited=%d\n", cfg_.id, inited_ ? 1 : 0);
+  if (inited_) {
+    Serial.println(F("[EXP MOTOR] init early return=true"));
+    return true;
+  }
 
   if (!cfg_.wire) {
     Serial.println("[FocKit] 缺少编码器总线，契约模式均需反馈，拒绝初始化");
     return false;
   }
   if (cfg_.sda >= 0 && cfg_.scl >= 0) {
-    cfg_.wire->begin(cfg_.sda, cfg_.scl, dengfoc_v4::I2C_HZ);
+    Serial.printf("[EXP MOTOR] wire.begin enter sda=%d scl=%d hz=%lu\n",
+                  cfg_.sda, cfg_.scl, (unsigned long)dengfoc_v4::I2C_HZ);
+    bool wireOk = cfg_.wire->begin(cfg_.sda, cfg_.scl, dengfoc_v4::I2C_HZ);
+    Serial.printf("[EXP MOTOR] wire.begin ret=%d\n", wireOk ? 1 : 0);
   }
+  Serial.println(F("[EXP MOTOR] sensor.init enter"));
   sensor_.init(cfg_.wire);
+  Serial.println(F("[EXP MOTOR] sensor.init returned"));
   motor_.linkSensor(&sensor_);
+  Serial.println(F("[EXP MOTOR] motor.linkSensor returned"));
 
   float vin = dengfoc_v4::readVin();
+  Serial.printf("[EXP MOTOR] readVin=%.4f\n", (double)vin);
   driver_.voltage_power_supply = vin;
-  if (!driver_.init()) return false;
+  Serial.printf("[EXP MOTOR] driver config pwm=%d,%d,%d en=%d supply=%.4f\n",
+                driver_.pwmA, driver_.pwmB, driver_.pwmC,
+                driver_.enableA_pin, (double)driver_.voltage_power_supply);
+  Serial.println(F("[EXP MOTOR] driver.init enter"));
+  int driverRet = driver_.init();
+  Serial.printf("[EXP MOTOR] driver.init ret=%d initialized=%d voltage_limit=%.4f\n",
+                driverRet, driver_.initialized ? 1 : 0, (double)driver_.voltage_limit);
   motor_.linkDriver(&driver_);
+  Serial.println(F("[EXP MOTOR] motor.linkDriver returned"));
 
   // 板载电流采样（15/16 课接法）：链接后 MT1/MT2 会话可用，id/iq 实测
   if (cfg_.useCurrentSense && cfg_.csPinA >= 0 && cfg_.csPinB >= 0) {
+    Serial.printf("[EXP MOTOR] currentSense config pins=%d,%d shunt=%.6f gain=%.3f\n",
+                  cfg_.csPinA, cfg_.csPinB,
+                  (double)dengfoc_v4::CURRENT_SENSE_SHUNT,
+                  (double)dengfoc_v4::CURRENT_SENSE_GAIN);
+    Serial.println(F("[EXP MOTOR] currentSense.init enter"));
     currentSense_.init();
+    Serial.println(F("[EXP MOTOR] currentSense.init returned"));
     motor_.linkCurrentSense(&currentSense_);
+    Serial.println(F("[EXP MOTOR] motor.linkCurrentSense returned"));
+  } else {
+    Serial.println(F("[EXP MOTOR] currentSense skipped"));
   }
 
   motor_.foc_modulation = FOCModulationType::SpaceVectorPWM;
@@ -84,31 +111,56 @@ bool SimpleFocMotor::init() {
   motor_.PID_velocity.I = 0.12f;
   motor_.LPF_velocity.Tf = 0.01f;
 
-  if (cfg_.monitor) motor_.useMonitoring(Serial);
+  if (cfg_.monitor) {
+    Serial.println(F("[EXP MOTOR] motor.useMonitoring enter"));
+    motor_.useMonitoring(Serial);
+    Serial.println(F("[EXP MOTOR] motor.useMonitoring returned"));
+  }
+  Serial.printf("[EXP MOTOR] limits voltage=%.4f velocity=%.4f current=%.4f\n",
+                (double)motor_.voltage_limit, (double)motor_.velocity_limit,
+                (double)motor_.current_limit);
+  Serial.println(F("[EXP MOTOR] motor.init enter"));
   motor_.init();
+  Serial.printf("[EXP MOTOR] motor.init returned status=%d enabled=%d\n",
+                (int)motor_.motor_status, motor_.enabled ? 1 : 0);
 
   // NVS 已有标定则注入，initFOC() 检测到有效零位/方向后跳过标定
   MotorCalib cal;
-  if (store_.load(cfg_.id, cal)) {
+  Serial.println(F("[EXP MOTOR] calibration load enter"));
+  bool loaded = store_.load(cfg_.id, cal);
+  Serial.printf("[EXP MOTOR] calibration load ret=%d\n", loaded ? 1 : 0);
+  if (loaded) {
     motor_.zero_electric_angle = cal.zeroElectricAngle;
     motor_.sensor_direction = static_cast<Direction>(cal.sensorDirection);
     Serial.printf("[FocKit] %s 注入历史标定：零位=%.3frad 方向=%d\n",
                   cfg_.id, cal.zeroElectricAngle, cal.sensorDirection);
   }
 
-  if (!motor_.initFOC()) {
+  Serial.println(F("[EXP MOTOR] motor.initFOC enter"));
+  int focRet = motor_.initFOC();
+  Serial.printf("[EXP MOTOR] motor.initFOC ret=%d status=%d dir=%d zero=%.6f\n",
+                focRet, (int)motor_.motor_status, (int)motor_.sensor_direction,
+                (double)motor_.zero_electric_angle);
+  if (!focRet) {
     Serial.printf("[FocKit] %s initFOC 失败（检查编码器与相线）\n", cfg_.id);
     return false;
   }
   // 标定结果固化：断电重启免标定（对标 STM32 底层 Flash 双页注入）
-  saveCalibration();
+  bool saved = saveCalibration();
+  Serial.printf("[EXP MOTOR] saveCalibration ret=%d\n", saved ? 1 : 0);
 
+  Serial.println(F("[EXP MOTOR] motor.disable enter"));
   motor_.disable();
+  Serial.println(F("[EXP MOTOR] motor.disable returned"));
   setMode(ControlMode::Idle);
+  Serial.printf("[EXP MOTOR] setMode Idle returned controller=%d\n", (int)motor_.controller);
   inited_ = true;
+  Serial.println(F("[EXP MOTOR] update enter"));
   update();
+  Serial.println(F("[EXP MOTOR] update returned"));
   Serial.printf("[FocKit] %s 就绪（限压 %.2fV ≈ %.2fA）\n",
                 cfg_.id, voltageLimit_, cfg_.currentLimit);
+  Serial.println(F("[EXP MOTOR] init returned true"));
   return true;
 }
 
@@ -234,7 +286,12 @@ bool SimpleFocMotor::saveCalibration() {
   c.zeroElectricAngle = motor_.zero_electric_angle;
   c.sensorDirection = static_cast<int8_t>(motor_.sensor_direction);
   c.magic = MotorCalib::MAGIC;
-  if (store_.save(cfg_.id, c)) {
+  Serial.printf("[EXP MOTOR] saveCalibration enter zero=%.6f dir=%d magic=0x%08lX\n",
+                (double)c.zeroElectricAngle, (int)c.sensorDirection,
+                (unsigned long)c.magic);
+  bool saved = store_.save(cfg_.id, c);
+  Serial.printf("[EXP MOTOR] store.save ret=%d\n", saved ? 1 : 0);
+  if (saved) {
     Serial.printf("[FocKit] %s 标定已固化（零位=%.3frad 方向=%d）\n",
                   cfg_.id, c.zeroElectricAngle, c.sensorDirection);
     return true;
@@ -245,7 +302,9 @@ bool SimpleFocMotor::saveCalibration() {
 bool SimpleFocMotor::loadCalibration() {
   // 注意：注入只对下一次 init()/initFOC() 生效
   MotorCalib c;
-  if (!store_.load(cfg_.id, c)) return false;
+  bool loaded = store_.load(cfg_.id, c);
+  Serial.printf("[EXP MOTOR] loadCalibration store.load ret=%d\n", loaded ? 1 : 0);
+  if (!loaded) return false;
   motor_.zero_electric_angle = c.zeroElectricAngle;
   motor_.sensor_direction = static_cast<Direction>(c.sensorDirection);
   return true;
@@ -253,7 +312,9 @@ bool SimpleFocMotor::loadCalibration() {
 
 bool SimpleFocMotor::hasSavedCalibration() {
   MotorCalib c;
-  return store_.load(cfg_.id, c);
+  bool found = store_.load(cfg_.id, c);
+  Serial.printf("[EXP MOTOR] hasSavedCalibration ret=%d\n", found ? 1 : 0);
+  return found;
 }
 
 } // namespace fockit
