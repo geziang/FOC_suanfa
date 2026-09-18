@@ -11,7 +11,7 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 }
 
 if (-not (Test-Path -LiteralPath $venvPython)) {
-    throw '虚拟环境创建失败。'
+    throw 'Virtual environment creation failed.'
 }
 
 & $venvPython -c "import PyQt5, pyqtgraph, serial, numpy"
