@@ -4,6 +4,9 @@ Set-Location -LiteralPath $projectRoot
 
 $venvPython = Join-Path $projectRoot '.venv\Scripts\python.exe'
 $entryPoint = Join-Path $projectRoot 'simpleFOCStudio.py'
+$qtRoot = Join-Path $projectRoot '.venv\Lib\site-packages\PyQt5\Qt5'
+$qtPlugins = Join-Path $qtRoot 'plugins'
+$qtPlatforms = Join-Path $qtPlugins 'platforms'
 
 if (-not (Test-Path -LiteralPath $venvPython)) {
     Write-Host 'Virtual environment not found. Configuring it now...'
@@ -13,6 +16,10 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 if (-not (Test-Path -LiteralPath $venvPython)) {
     throw 'Virtual environment creation failed.'
 }
+
+$env:QT_PLUGIN_PATH = $qtPlugins
+$env:QT_QPA_PLATFORM_PLUGIN_PATH = $qtPlatforms
+$env:PATH = $qtRoot + ';' + $qtPlatforms + ';' + $env:PATH
 
 & $venvPython -c "import PyQt5, pyqtgraph, serial, numpy"
 if ($LASTEXITCODE -ne 0) {
