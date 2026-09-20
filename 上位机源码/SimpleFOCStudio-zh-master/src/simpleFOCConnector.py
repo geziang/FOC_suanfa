@@ -8,7 +8,7 @@ import serial
 from PyQt5 import QtCore, QtWidgets
 from serial import SerialException
 from collections import defaultdict
-from src.debugTrace import trace, trace_exception
+from src.debugTrace import trace, trace_exception, trace_verbose
 
 class PIDController:
     P = 0
@@ -479,7 +479,7 @@ class SimpleFOCDevice:
            self.sendCommand(str(self.devCommandID) + str(command) + str(value))
 
     def getCommand(self, command):
-        trace('[SERIAL CMD] getCommand suffix=%r', command)
+        trace_verbose('[SERIAL CMD] getCommand suffix=%r', command)
         if self.isConnected:
            self.sendCommand(str(self.devCommandID) + str(command) )
 
@@ -630,7 +630,7 @@ class SimpleFOCDevice:
 
 
     def updateStates(self):
-        trace('[STATE] updateStates enter connected=%r', self.isConnected)
+        trace_verbose('[STATE] updateStates enter connected=%r', self.isConnected)
         if self.isConnected:
             self.getCommand('MG0')
             time.sleep(100 / 1000)
@@ -649,7 +649,7 @@ class SimpleFOCDevice:
 
 
     def pushConfiguration(self):
-        print("push")
+        pass  # 原为裸 print("push")，随 2026-09-20 打印裁剪移除；函数体仍为待实现
         # self.sendControlType(self.controlType)
         # self.sendProportionalGain(self.PIDVelocity, self.self)
         # self.sendIntegralGain(self.PIDVelocity, self.integralGainPID)
@@ -807,7 +807,7 @@ class SimpleFOCDevice:
             self.angleNow = float(comandResponse.replace('angle:', ''))
 
     def parseResponses(self, comandResponse):
-        trace('[PARSE] command response=%r', comandResponse)
+        trace_verbose('[PARSE] command response=%r', comandResponse)
         if 'PID vel' in comandResponse:
             comandResponse = comandResponse.replace('PID vel|', '')
             self.parsePIDFResponse(self.PIDVelocity, self.LPFVelocity, comandResponse)
@@ -844,7 +844,7 @@ class SimpleFOCDevice:
             self.parsePWMModResponse(comandResponse)
 
     def parseStateResponses(self, comandResponse):
-        trace('[PARSE] state response=%r', comandResponse)
+        trace_verbose('[PARSE] state response=%r', comandResponse)
         if 'Monitor' in comandResponse:
             comandResponse = comandResponse.replace('Monitor |', '')
             self.parseMonitorResponse(comandResponse)
@@ -862,7 +862,7 @@ class SerialPortReceiveHandler(QtCore.QThread):
         self.serialComm = serial_port
 
     def handle_received_data(self, data):
-        trace('[SERIAL RX] raw=%r', data.rstrip() if data else data)
+        trace_verbose('[SERIAL RX] raw=%r', data.rstrip() if data else data)
         if not data:
             return
             

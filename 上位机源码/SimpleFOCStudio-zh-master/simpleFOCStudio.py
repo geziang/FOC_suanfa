@@ -8,19 +8,23 @@ from PyQt5 import QtWidgets
 from src.gui.mainWindow import UserInteractionMainWindow
 import sys
 import logging
-from src.debugTrace import trace, trace_exception
+from src.debugTrace import trace, trace_exception, attach_verbose_handler
 
 if __name__ == '__main__':
     try:
+        fileHandler = logging.FileHandler('.SimpleFOCConfigTool.log', mode='w', encoding='utf-8')
         logging.basicConfig(
             level=logging.DEBUG,
             format='%(asctime)s %(levelname)s %(name)s - %(message)s',
             handlers=[
-                logging.FileHandler('.SimpleFOCConfigTool.log', mode='w', encoding='utf-8'),
+                fileHandler,
                 logging.StreamHandler(sys.stdout),
             ],
             force=True,
         )
+        # 循环/高频打印（逐条报文、轮询、波形）默认只落日志文件，不刷控制台。
+        # 需要现场排查时设环境变量 FOC_TRACE_VERBOSE=1 让它们也上控制台。
+        attach_verbose_handler(fileHandler)
         trace('[BOOT] simpleFOCStudio.py start; argv=%r', sys.argv)
         app = QtWidgets.QApplication(sys.argv)
         trace('[BOOT] QApplication created')

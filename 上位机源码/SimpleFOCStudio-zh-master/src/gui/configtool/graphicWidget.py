@@ -8,7 +8,7 @@ from PyQt5 import QtWidgets
 
 from src.gui.sharedcomnponets.sharedcomponets import GUIToolKit
 from src.simpleFOCConnector import SimpleFOCDevice
-from src.debugTrace import trace, trace_exception
+from src.debugTrace import trace, trace_exception, trace_verbose
 
 
 class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
@@ -116,7 +116,7 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
             self.currentStatus = self.disconnectedState
 
     def upDateGraphic(self, signalList):
-        trace('[PLOT RX] signalList=%r status=%r', signalList, self.currentStatus)
+        trace_verbose('[PLOT RX] signalList=%r status=%r', signalList, self.currentStatus)
         if self.currentStatus is self.connectedPlottingStartedState or \
                 self.currentStatus is self.connectedPausedState:
 
@@ -145,7 +145,7 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
         meadian = np.median(array)
 
     def updatePlot(self):
-        trace('[PLOT] updatePlot enter enabled=%r', self.signalPlotFlags)
+        trace_verbose('[PLOT] updatePlot enter enabled=%r', self.signalPlotFlags)
         for i, plotFlag in enumerate(self.signalPlotFlags):
             if plotFlag:
                 self.signalPlots[i].setData(self.timeArray, self.signalDataArrays[i])
