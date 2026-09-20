@@ -143,7 +143,9 @@ class SimpleFOCDevice:
             self.connectionID = ""
 
             # command id of the device
-            self.devCommandID = ''
+            # FocKit 绑定（2026-09-20）：前缀写死为 'M'，与固件 Commander 注册一致；
+            # 运行期无任何写点可再改它（设备页命令ID框已随零配置改造移除）。
+            self.devCommandID = 'M'
 
             # motion control paramters
             self.PIDVelocity = PIDController(self.VELOCITY_PID)
@@ -227,20 +229,13 @@ class SimpleFOCDevice:
         # initial target
         self.initialTarget = jsonValue['initialTarget']
     
-        # serial communication variables
-        self.connectionID = jsonValue['connectionID']
-        self.serialPortName = jsonValue['serialPortName']
-        self.serialRate = jsonValue['serialRate']
-        self.serialByteSize = jsonValue['serialByteSize']
-        self.serialParity = jsonValue['serialParity']
-        self.stopBits = jsonValue['stopBits']
+        # FocKit 绑定（2026-09-20）：串口七字段（端口/波特率/字节数/校验/停止位/命令ID）
+        # 不再从 JSON 覆盖 —— 加载设备文件只影响电机整定参数，链路参数保持写死值
+        # （前缀 M、115200-8N1；端口由设备页下拉框在连接时写入）。
+        self.connectionID = jsonValue.get('connectionID', self.connectionID)
         try:
             self.customCommands.customCommandsList = []
             self.customCommands.load(jsonValue['customCommands'])
-        except KeyError:
-            pass
-        try:
-            self.devCommandID = jsonValue['devCommandID']
         except KeyError:
             pass
         trace('[DEVICE] configureDevice done; port=%r rate=%r commandID=%r', self.serialPortName, self.serialRate, self.devCommandID)
