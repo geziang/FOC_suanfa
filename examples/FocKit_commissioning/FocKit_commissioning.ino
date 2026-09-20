@@ -14,13 +14,12 @@
 //
 // —— 建模与带宽计算区依据（可溯源）——
 // 级联带宽分配（内→外递减，工业惯例 5~10 倍）：
-//   电流环 ωc = 1000 rad/s（τc=1ms）
+//   电流环 ωc = 125 rad/s（τc=8ms；2026-09-21 定档，见下方抄回注记）
 //   速度环 ωv = 20 rad/s（受电压力矩通道与速度 LPF(10ms) 约束，取保守）
 //   位置环 ωp = ωv/5 = 4 rad/s
 // 电流环（对象 G=1/(Ls+R)，PI 零极对消法）：
-//   kp_i = L·ωc = 4.25mH×1000 = 4.25 [V/A]
-//   ki_i = R·ωc = 8.25Ω×1000  = 8250 [V/A/s]（校验：ki/kp=R/L ✓）
-//   对照官方基线(16课)：5 / 1000 —— kp 同量级(偏差15%)，ki 官方偏保守
+//   kp_i = L·ωc = 4.25mH×125 = 0.53 [V/A]
+//   ki_i = R·ωc = 8.25Ω×125  = 1031 [V/A/s]（校验：ki/kp=R/L ✓）
 // 速度环（对象：电压域力矩通道 1/R × KT × 1/(Js)）：
 //   kp_v = ωv·J·R/KT；J 来源③：官方基线 0.021 V/(rad/s) 在 ωv=20 下反推
 //   → J ≈ 1.05e-5 kg·m²（10.5 g·cm²，2208 转子合理量级；P3 辨识收口）
@@ -75,7 +74,10 @@ constexpr float L_PH = dengfoc_v4::MOTOR_2208.phaseInductance;  // 4.25 mH  ①�
 constexpr float KT_M = dengfoc_v4::MOTOR_2208.kt;               // 0.0827   ①标称
 constexpr float J_EST = 1.05e-5f;  // kg·m² ③反推（官方速度基线@ωv=20），P3 收口
 
-constexpr float WC = 1000.0f;  // [rad/s] 电流环带宽（τc=1ms）
+// 电流环带宽：2026-09-21 T-P1-3 实测定档（TST-01）——堵转判据全绿
+// （ess≤0.3%、Cd≤3%、纹波≤2%、双向对称，EXP-03）；同时受主循环 ~1.35kHz
+// 数字控制上限约束（ωc ≤ loop/10）。Kp=L·ωc=0.53、Ki=R·ωc=1031、τc=8ms。
+constexpr float WC = 125.0f;  // [rad/s] 电流环带宽
 constexpr float WV = 20.0f;    // [rad/s] 速度环带宽
 constexpr float WP = 4.0f;     // [rad/s] 位置环带宽（ωv/5）
 
@@ -92,7 +94,7 @@ void computeGains() {
                 (double)R_PH, (double)(L_PH * 1000.0f), (double)KT_M, (double)J_EST);
   Serial.printf("[整定] 带宽: ωc=%.0f ωv=%.0f ωp=%.0f rad/s\n",
                 (double)WC, (double)WV, (double)WP);
-  Serial.printf("[整定] 电流环 kp=%.2f ki=%.0f（官方基线 5/1000，kp 同量级）\n",
+  Serial.printf("[整定] 电流环 kp=%.2f ki=%.0f（ωc=125 定档，T-P1-3 已验收）\n",
                 (double)kpI, (double)kiI);
   Serial.printf("[整定] 速度环 kp=%.4f ki=%.4f（官方基线 0.021/0.12）\n",
                 (double)kpV, (double)kiV);

@@ -98,7 +98,7 @@ class TuningBenchWidget(WorkAreaTabWidget):
     # /降采样/目标单位/默认幅值/0.5A 红线（仅电流环）/判据测量响应通道（列序同上）
     LOOPS = {
         'current': dict(title='电流环', torque=2, motion=0,
-                        vars=[True, False, False, True, True, False, False],
+                        vars=[True, True, True, True, True, False, True],
                         downsample=100, unit='A', default=0.15, redline=0.5,
                         cards=('currentQ', 'currentD'), response=3),
         'velocity': dict(title='速度环', torque=0, motion=1,

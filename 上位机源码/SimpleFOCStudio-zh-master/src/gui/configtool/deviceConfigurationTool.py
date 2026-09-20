@@ -8,7 +8,6 @@ from src.gui.configtool.deviceJoggingControl import DeviceJoggingControl
 from src.gui.configtool.droDisplayWidget import DROGroupBox
 from src.gui.configtool.generalControls import GeneralControls
 from src.gui.configtool.generalSettingsWidget import GeneralSettingsGroupBox
-from src.gui.configtool.graphicWidget import SimpleFOCGraphicWidget
 from src.gui.configtool.pidConfiguration import PidGroupBox
 from src.gui.configtool.torqueConfig import TorqueGroupBox
 from src.gui.sharedcomnponets.commandLineInterface import CommandLineWidget
@@ -48,8 +47,8 @@ class DeviceConfigurationTool(WorkAreaTabWidget):
         self.horizontalLayout.addWidget(self.connectionControl)
         self.verticalLayout.addWidget(self.counterWidget)
 
-        self.graphicWidget = SimpleFOCGraphicWidget()
-        self.verticalLayout.addWidget(self.graphicWidget)
+        # 波形图已于 2026-09-21 从本页移除：整定台是唯一波形入口（REF-13 删除项——
+        # 双实例曾是 time_s 空 CSV 与页面混淆的根源；本页保留全景参数/控制职责）
 
         self.bottomWidget = QtWidgets.QWidget(self)
         self.bottomWidget.setObjectName('bottomWidget')

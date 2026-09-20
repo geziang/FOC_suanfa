@@ -62,6 +62,9 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
         trace('[UI] plot widget created; pyqtgraph=%s', getattr(pg, '__version__', '?'))
         self.plotWidget.showGrid(x=True, y=True, alpha=0.5)
         self.plotWidget.addLegend()
+        # 初始即显示 X 轴标签（校准后切"时间 (s)"），不留无标签空窗
+        self.plotWidget.setLabel('bottom', '样本点')
+        self._xLabelMode = 'pts'
 
         # self.legend = pg.LegendItem()
         # self.legend.setParentItem(self.plotWidget)
@@ -116,7 +119,6 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
         # 降采样/主循环变化会在 ~2 秒内自动重校准；流中断 >0.5s 清空重校。
         self.arrivalTimes = collections.deque(maxlen=256)
         self.sampleInterval = None   # [s/点]；None=未校准（X 轴暂以点序号显示）
-        self._xLabelMode = None
 
         # ── 阶跃判据测量（tr/σ%/ts/ess，2026-09-21）：整定台阶跃按钮触发 ──
         self.measure = None          # 进行中的测量窗（None=空闲）
