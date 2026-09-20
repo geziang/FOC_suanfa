@@ -151,9 +151,15 @@ class TuningBenchWidget(WorkAreaTabWidget):
         self.pidCards = {
             'velocity': PidCard('速度环 PID', d_, d_.PIDVelocity, d_.LPFVelocity),
             'position': PidCard('位置环 P', d_, d_.PIDAngle, d_.LPFAngle),
-            'currentQ': PidCard('电流 Q 轴 PID', d_, d_.PIDCurrentQ, d_.LPFCurrentQ),
-            'currentD': PidCard('电流 D 轴 PID', d_, d_.PIDCurrentD, d_.LPFCurrentD),
+            'currentQ': PidCard('电流 Q 轴 PID（目标即页面目标）', d_, d_.PIDCurrentQ, d_.LPFCurrentQ),
+            'currentD': PidCard('电流 D 轴 PID（目标恒 0）', d_, d_.PIDCurrentD, d_.LPFCurrentD),
         }
+        # D 轴目标由库硬性固定为 0（BLDCMotor::loopFOC 的 foc_current 分支：
+        # PID_current_d(-current.d)，正交无弱磁）——D 轴只整定抑制增益
+        self.pidCards['currentD'].setToolTip(
+            'D 轴电流目标由 SimpleFOC 硬性固定为 0（loopFOC: '
+            'voltage.d = PID_current_d(-current.d)），不存在 D 轴目标；'
+            '本卡只整定 D 轴电流的抑制增益（把解耦/漏磁电流压回零）。')
         for card in self.pidCards.values():
             self.sideLayout.addWidget(card)
             card.hide()
@@ -170,15 +176,17 @@ class TuningBenchWidget(WorkAreaTabWidget):
         self.targetGrid.addWidget(self.unitLabel, 0, 2)
 
         # 当前目标实时回读（MG0 轮询，0.2s 刷新）：显示电机此刻的真实目标，
-        # 与"幅值（想设多少）"语义分开；阶跃点下后看它确认命令已生效
-        self.currentTargetLabel = QtWidgets.QLabel('—')
+        # 与"幅值（想设多少）"语义分开；阶跃点下后看它确认命令已生效。
+        # 标题+数值合成单标签、横跨整行——窄列里拆两个控件会被网格挤压变形
+        self.currentTargetLabel = QtWidgets.QLabel('当前目标：—')
         currentFont = self.currentTargetLabel.font()
-        currentFont.setPointSize(18)
+        currentFont.setPointSize(14)
         currentFont.setBold(True)
         self.currentTargetLabel.setFont(currentFont)
         self.currentTargetLabel.setStyleSheet('color:#e53935;')
-        self.targetGrid.addWidget(QtWidgets.QLabel('当前目标'), 1, 0)
-        self.targetGrid.addWidget(self.currentTargetLabel, 1, 1, 1, 2)
+        self.currentTargetLabel.setAlignment(QtCore.Qt.AlignCenter)
+        self.currentTargetLabel.setMinimumHeight(26)
+        self.targetGrid.addWidget(self.currentTargetLabel, 1, 0, 1, 3)
 
         self.zeroButton = QtWidgets.QPushButton('归零')
         self.zeroButton.setToolTip('目标设 0（换环/收尾前先归零）')
@@ -278,7 +286,9 @@ class TuningBenchWidget(WorkAreaTabWidget):
         for cardKey, card in self.pidCards.items():
             card.setVisible(cardKey in cfg['cards'])
         self.unitLabel.setText(cfg['unit'])
-        self.readoutCaptions['target'].setText('目标 (%s)' % cfg['unit'])
+        # 电流环目标是 Q 轴电流（foc_current 力矩模式 target=Iq；D 轴由库恒 0）
+        self.readoutCaptions['target'].setText(
+            'Iq目标 (A)' if key == 'current' else '目标 (%s)' % cfg['unit'])
         self.targetInput.setText(str(cfg['default']))
         self._updateTargetGuard()
         # ⑦ 未开流则自动开流（开流动作会再发一遍 MMD+MMS，幂等）
@@ -333,7 +343,8 @@ class TuningBenchWidget(WorkAreaTabWidget):
         self.readoutLabels['target'].setText('%.3f' % target)
         self.readoutLabels['velocity'].setText('%.3f' % float(d_.velocityNow or 0))
         self.readoutLabels['angle'].setText('%.3f' % float(d_.angleNow or 0))
-        self.currentTargetLabel.setText('%.3f %s' % (target, unit))
+        prefix = '当前Q轴目标：' if self.activeLoop == 'current' else '当前目标：'
+        self.currentTargetLabel.setText('%s%.3f %s' % (prefix, target, unit))
 
     def connectionStateChanged(self, isConnected):
         trace('[TUNE] connectionStateChanged connected=%r', isConnected)
