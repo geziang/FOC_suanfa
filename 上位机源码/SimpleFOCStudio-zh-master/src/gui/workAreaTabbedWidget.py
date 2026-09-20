@@ -83,6 +83,20 @@ class WorkAreaTabbedWidget(QtWidgets.QTabWidget):
 
     def openDevice(self):
         trace('[UI] openDevice clicked')
+        if self.configDeviceTool is not None:
+            # 原来这里是静默 no-op：整个函数体都套在 `if configDeviceTool is None` 里，
+            # 已有 Device 页时连文件对话框都不弹，用户会以为"打开设备"了 —— 其实
+            # configureDevice 从未执行，devCommandID 仍是空串（下行命令缺前缀）。
+            trace('[UI] openDevice skipped: a device tab is already open')
+            msgBox = QtWidgets.QMessageBox()
+            msgBox.setIcon(QtWidgets.QMessageBox.Warning)
+            msgBox.setText('已有「设备」页打开，无法再加载配置文件。\n'
+                           '请先关闭该页（标签上的 ×），再执行「打开设备」。')
+            msgBox.setWindowTitle('SimpleFOC configDeviceTool')
+            msgBox.setStandardButtons(QtWidgets.QMessageBox.Ok)
+            msgBox.exec_()
+            return
+        # 下面这段沿用原缩进结构：执行到这里 configDeviceTool 必为 None
         if self.configDeviceTool is None:
             dlg = QtWidgets.QFileDialog()
             dlg.setFileMode(QtWidgets.QFileDialog.AnyFile)

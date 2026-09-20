@@ -47,11 +47,59 @@ void StudioBridge::onMotorCmd_(char* cmd) {
   self_->handleCmd_(cmd);
 }
 
+bool StudioBridge::isCmdLetter_(char c) {
+  // commands.h 的 CMD_* 全集；'?' / '@' / '#' 是 Commander 自身的扫描/输出模式命令，
+  // 不经电机命令集，故不列入（它们不该出现在本会话的协议流里）。
+  switch (c) {
+    case CMD_C_D_PID:      // 'D'
+    case CMD_C_Q_PID:      // 'Q'
+    case CMD_V_PID:        // 'V'
+    case CMD_A_PID:        // 'A'
+    case CMD_STATUS:       // 'E'
+    case CMD_LIMITS:       // 'L'
+    case CMD_MOTION_TYPE:  // 'C'
+    case CMD_TORQUE_TYPE:  // 'T'
+    case CMD_SENSOR:       // 'S'
+    case CMD_MONITOR:      // 'M'
+    case CMD_RESIST:       // 'R'
+    case CMD_PWMMOD:       // 'W'
+      return true;
+    default:
+      return false;
+  }
+}
+
 void StudioBridge::handleLine(char* line) {
-  // shell 转交的是整行（含注册 ID 与行尾 eol）。非本会话 ID 的行与 Commander 的分发语义
-  // 保持一致：无人认领 → 静默丢弃（绝不回"未知命令"，这正是刷屏的源头）。
-  if (line == nullptr || line[0] != kCmdId) return;
-  handleCmd_(&line[1]);
+  // shell 转交的是整行（含注册 ID 与行尾 eol）。宽容解析两种上位机约定（详见头注释）：
+  //   已配 ID 'M' → 线缆为 `M<命令体>`，需剥掉首位 ID 再交 Commander（官方语义）
+  //   ID 为空串   → 线缆就是命令体本身，整行投递
+  // 不做字符猜测：用两条铁证判定并自我修正，跨越"上位机中途改配置"也无需复位。
+  if (line == nullptr || line[0] == 0) return;
+
+  // 铁证 ①：`MM…` 只能是 ID('M') + 命令体('M…')——命令体没有 "MM" 形式。
+  if (line[0] == kCmdId && line[1] == kCmdId) {
+    idAbsent_ = false;
+  }
+  // 铁证 ②：非 'M' 打头的命令字母行只能是裸命令体——配了 ID 的行必以 'M' 开头。
+  else if (line[0] != kCmdId && isCmdLetter_(line[0])) {
+    idAbsent_ = true;
+  }
+
+  const bool stripId = (line[0] == kCmdId) && !idAbsent_;
+  char* body = stripId ? &line[1] : line;
+
+  // 收敛后仍不是合法命令体（首位既非命令字母、也非数字/正负号）→ 静默丢弃，
+  // 与 Commander 的分发语义一致：无人认领不制造 "unknown cmd err"（那正是刷屏的源头）。
+  if (!isCmdLetter_(body[0]) && !isDigit((int)body[0]) && body[0] != '-' && body[0] != '+') return;
+
+  if (trace_ && dbgPort_) {
+    dbgPort_->print(F("[FW STUDIO] handleLine id="));
+    dbgPort_->print(stripId ? F("stripped") : (idAbsent_ ? F("absent") : F("none")));
+    dbgPort_->print(F(" body='"));
+    dbgPort_->print(body);
+    dbgPort_->println(F("'"));
+  }
+  handleCmd_(body);
 }
 
 void StudioBridge::handleCmd_(char* cmd) {

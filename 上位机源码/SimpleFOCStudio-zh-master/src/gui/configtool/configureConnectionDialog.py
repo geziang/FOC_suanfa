@@ -85,6 +85,9 @@ class ConfigureSerailConnectionDialog(QtWidgets.QDialog):
         self.connectionIDlineEdit = QtWidgets.QLineEdit(self)
         self.connectionIDlineEdit.setMaxLength(10)
         self.connectionIDlineEdit.setObjectName('connectionNameEdit')
+        self.connectionIDlineEdit.setToolTip(
+            '本机连接标识，只随 device.json 保存，不参与任何下行命令。\n'
+            '真正生效的设备命令ID 在“设备”页连接按钮旁的输入框（须填 M）。')
         self.gridLayout.addWidget(self.connectionIDlineEdit, 2, 3, 1, 1)
 
         self.buttonBox = QtWidgets.QDialogButtonBox(self)
@@ -101,7 +104,7 @@ class ConfigureSerailConnectionDialog(QtWidgets.QDialog):
         self.parityLabel.setText('奇偶校验')
         self.byteSizeLabel.setText('字节数')
         self.stopBitsLabel.setText('停止位')
-        self.connectionIDLabel.setText('命令ID')
+        self.connectionIDLabel.setText('连接ID（不下发）')
 
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)

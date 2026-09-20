@@ -24,10 +24,22 @@ class ConnectionControlGroupBox(QtWidgets.QGroupBox):
         self.horizontalLayout.setObjectName('generalControlHL')
 
         self.devCommandIDLabel = QtWidgets.QLabel("命令ID:")
+        self.devCommandIDLabel.setToolTip(
+            '真正生效的设备命令ID —— 下行命令会拼成 <命令ID><命令体>。\n'
+            '本固件注册为 M，故须填 M。\n'
+            '注意：「设置」弹窗里的那个“连接ID（不下发）”只在 device.json 里留档，与本框无关。')
         self.horizontalLayout.addWidget(self.devCommandIDLabel)
 
         self.devCommandIDLetter = QtWidgets.QLineEdit()
         self.devCommandIDLetter.setObjectName('devCommandIDLetter')
+        self.devCommandIDLetter.setMaxLength(1)          # 设备 ID 是单个字符，防止误填 "MM"
+        self.devCommandIDLetter.setPlaceholderText('M')
+        self.devCommandIDLetter.setToolTip(
+            '须填 M。\n'
+            '改完立即生效（textChanged 提交，无需回车）。\n'
+            '本框不落盘：重启 Studio 后用「文件 → 打开设备」载入 device.json 才会自动恢复。')
+        # 双重提交：textChanged 覆盖"打了字但没回车"；editingFinished 保留兼容
+        self.devCommandIDLetter.textChanged.connect(self.changeDevicedevCommandID)
         self.devCommandIDLetter.editingFinished.connect(self.changeDevicedevCommandID)
         self.horizontalLayout.addWidget(self.devCommandIDLetter)
         self.devCommandIDLetter.setText(self.device.devCommandID)
@@ -60,8 +72,13 @@ class ConnectionControlGroupBox(QtWidgets.QGroupBox):
         trace('[UI] ConnectionControlGroupBox.__init__ done')
     
     def changeDevicedevCommandID(self):
-        trace('[UI] command ID editingFinished value=%r', self.devCommandIDLetter.text())
-        self.device.devCommandID = self.devCommandIDLetter.text()
+        # 去掉误输入的空白（单字符设备 ID，带空格会让下行命令前缀错位）
+        value = self.devCommandIDLetter.text().strip()
+        if value != self.devCommandIDLetter.text():
+            # setText 会再触发一次 textChanged，但那时已相等 → 不会再进这里，无递归
+            self.devCommandIDLetter.setText(value)
+        self.device.devCommandID = value
+        trace('[UI] command ID committed value=%r', value)
 
     def connectDisconnectDeviceAction(self):
         trace('[UI] connect button clicked connected=%r', self.device.isConnected)

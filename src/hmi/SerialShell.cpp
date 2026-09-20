@@ -171,7 +171,8 @@ void SerialShell::dispatch_() {
       // 或会话桥未挂载（attachStudio 为空）。
       if (upperHead) {
         port_->println(F("[Studio] 该大写命令未被识别（与 shell 命令字重名或缺参数）"));
-        port_->println(F("[Studio] 处理：上位机连接对话框命令ID 必须填 M；或串口终端先输 studio"));
+        port_->println(F("[Studio] 处理：「设备」页连接按钮旁的[命令ID:] 框须填 M"));
+        port_->println(F("[Studio] 注意：「设置」弹窗里的[连接ID]不下发，填它无效"));
       } else {
         port_->println(F("输入 help 查看全部命令"));
       }
