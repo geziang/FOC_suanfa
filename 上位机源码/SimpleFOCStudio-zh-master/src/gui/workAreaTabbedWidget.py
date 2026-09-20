@@ -8,6 +8,7 @@ from src.gui.commandlinetool.commandlinetool import CommandLineConsoleTool
 from src.gui.configtool.deviceConfigurationTool import DeviceConfigurationTool
 from src.gui.configtool.generatedCodeDisplay import GeneratedCodeDisplay
 from src.gui.configtool.treeViewConfigTool import TreeViewConfigTool
+from src.gui.configtool.tuningBench import TuningBenchWidget
 from src.simpleFOCConnector import SimpleFOCDevice
 from src.debugTrace import trace, trace_exception
 
@@ -25,6 +26,7 @@ class WorkAreaTabbedWidget(QtWidgets.QTabWidget):
 
         self.cmdLineTool = None
         self.configDeviceTool = None
+        self.tuningBenchTool = None
         self.generatedCodeTab = None
         self.activeToolsList = []
 
@@ -42,6 +44,8 @@ class WorkAreaTabbedWidget(QtWidgets.QTabWidget):
         if type(self.currentWidget()) == DeviceConfigurationTool or type(
                 self.currentWidget()) == TreeViewConfigTool:
             self.configDeviceTool = None
+        if type(self.currentWidget()) == TuningBenchWidget:
+            self.tuningBenchTool = None
         if type(self.currentWidget()) == GeneratedCodeDisplay:
             self.generatedCodeTab = None
         if self.configDeviceTool == None and self.cmdLineTool == None:
@@ -50,6 +54,22 @@ class WorkAreaTabbedWidget(QtWidgets.QTabWidget):
 
         self.activeToolsList.pop(index)
         self.removeTab(index)
+
+    def addTuningBench(self):
+        """三环整定台（2026-09-20）：使用面浓缩的默认工作页，见 REF-13/REF-12 §4.2。"""
+        trace('[UI] addTuningBench clicked; existing=%r', self.tuningBenchTool is not None)
+        if self.tuningBenchTool is None:
+            try:
+                trace('[UI] addTuningBench constructing TuningBenchWidget')
+                self.tuningBenchTool = TuningBenchWidget()
+                trace('[UI] addTuningBench TuningBenchWidget constructed')
+            except Exception as exception:
+                trace_exception('addTuningBench', exception)
+                raise
+            self.activeToolsList.append(self.tuningBenchTool)
+            self.addTab(self.tuningBenchTool,
+                        self.tuningBenchTool.getTabIcon(), '三环整定')
+            self.setCurrentIndex(self.currentIndex() + 1)
 
     def addDeviceForm(self):
         trace('[UI] addDeviceForm clicked; existing=%r', self.configDeviceTool is not None)

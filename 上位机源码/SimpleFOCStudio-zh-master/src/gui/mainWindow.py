@@ -37,8 +37,11 @@ class UserInteractionMainWindow(object):
         # Add central Widget to the main window
         main_window.setCentralWidget(self.centralwidget)
 
-        # FocKit 绑定（2026-09-20）：启动即自动打开设备页（表格视图，含连接区），
-        # 不再依赖「文件 → 打开设备」加载 device.json —— 链路参数已写死，
-        # 唯一的人机操作是"选端口 + 点连接"。打开设备菜单保留，仅用于载入历史整定值。
+        # FocKit 绑定（2026-09-20）：启动自动开页，免「文件 → 打开设备」。
+        # 默认第一页 = 三环整定台（使用面浓缩的工作页，REF-13）；
+        # 设备页随后（全功能后盾：全景参数/树形视图）。链路参数已写死，
+        # 整定台的主路径操作 = "选端口 + 点连接 + 点环"。
+        self.tabbedToolsWidget.addTuningBench()
         self.tabbedToolsWidget.addDeviceForm()
+        self.tabbedToolsWidget.setCurrentIndex(0)
 

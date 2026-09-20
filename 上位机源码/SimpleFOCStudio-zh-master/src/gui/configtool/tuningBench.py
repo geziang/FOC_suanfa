@@ -1,0 +1,326 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""三环整定台（2026-09-20 立项，REF-13 裁剪方法论的第一个正面应用）。
+
+定位（EXP-02/REF-13）：
+- 本页是"使用面的浓缩"——进页即整定工作区：环选择 → 大波形 → 参数卡 → 目标阶跃；
+- 无串口控制台（看串口去「命令行交互」页），无树形全景（在「设备」页）；
+- 全部配置面已冻结（前缀 M / 115200-8N1 / 拉取模式），本页只暴露使用面：
+  环预设、PID 增益、目标幅值、曲线勾选——这些"随实验而变"的量永不写死。
+
+环预设（一键原子序列，切环安全纪律 REF-12 §6.2 —— 任何一步不可省）：
+  ① 目标归零 → ② 力矩类型 MT → ③ 控制模式 MC → ④ 曲线变量位图 →
+  ⑤ 降采样 → ⑥ 参数卡/目标单位切换 → ⑦ 未开流则自动开流
+"""
+from PyQt5 import QtCore, QtWidgets
+
+from src.gui.configtool.connectionControl import ConnectionControlGroupBox
+from src.gui.configtool.graphicWidget import SimpleFOCGraphicWidget
+from src.gui.sharedcomnponets.sharedcomponets import (WorkAreaTabWidget,
+                                                      GUIToolKit)
+from src.simpleFOCConnector import SimpleFOCDevice
+from src.debugTrace import trace
+
+
+class PidCard(QtWidgets.QGroupBox):
+    """单个 PID 组的参数卡：P/I/D/斜坡/限幅/Tf 六字段 + 读回/写入。
+
+    读回走 connector.pullPIDConf（应答异步到达并更新 device 上的 PID 对象），
+    500ms 后从对象回填字段；写入直接顺序下发六条 SET。
+    """
+
+    def __init__(self, title, device, pid, lpf, parent=None):
+        super().__init__(title, parent)
+        self.device = device
+        self.pid = pid
+        self.lpf = lpf
+
+        self.grid = QtWidgets.QGridLayout(self)
+        labels = ['P', 'I', 'D', '斜坡', '限幅', 'Tf']
+        self.fields = []
+        for col, text in enumerate(labels):
+            lab = QtWidgets.QLabel(text)
+            self.grid.addWidget(lab, 0, col)
+            edit = QtWidgets.QLineEdit()
+            edit.setMinimumWidth(58)
+            self.grid.addWidget(edit, 1, col)
+            self.fields.append(edit)
+
+        self.readBackButton = QtWidgets.QPushButton('读回')
+        self.readBackButton.setIcon(GUIToolKit.getIconByName('pull'))
+        self.readBackButton.clicked.connect(self.readBack)
+        self.grid.addWidget(self.readBackButton, 2, 0, 1, 3)
+
+        self.writeButton = QtWidgets.QPushButton('写入')
+        self.writeButton.setIcon(GUIToolKit.getIconByName('push'))
+        self.writeButton.clicked.connect(self.write)
+        self.grid.addWidget(self.writeButton, 2, 3, 1, 3)
+
+        self.refreshFromDevice()
+
+    def refreshFromDevice(self):
+        values = [self.pid.P, self.pid.I, self.pid.D,
+                  self.pid.outputRamp, self.pid.outputLimit, self.lpf.Tf]
+        for edit, value in zip(self.fields, values):
+            edit.setText(str(value))
+
+    def readBack(self):
+        trace('[TUNE] pid readback group=%r', self.pid.cmd)
+        if not self.device.isConnected:
+            return
+        self.device.pullPIDConf(self.pid, self.lpf)
+        # 应答异步到达（每条间隔 5ms，共 6 条），500ms 后回填
+        QtCore.QTimer.singleShot(500, self.refreshFromDevice)
+
+    def write(self):
+        if not self.device.isConnected:
+            return
+        try:
+            p, i, d, ramp, limit, tf = [float(f.text()) for f in self.fields]
+        except ValueError:
+            QtWidgets.QMessageBox.warning(
+                None, '写入', '参数字段必须是数字。')
+            return
+        trace('[TUNE] pid write group=%r P=%r I=%r', self.pid.cmd, p, i)
+        d_ = self.device
+        d_.sendProportionalGain(self.pid, p)
+        d_.sendIntegralGain(self.pid, i)
+        d_.sendDerivativeGain(self.pid, d)
+        d_.sendOutputRamp(self.pid, ramp)
+        d_.sendOutputLimit(self.pid, limit)
+        d_.sendLowPassFilter(self.lpf, tf)
+
+
+class TuningBenchWidget(WorkAreaTabWidget):
+    """三环整定台：连接条 + 环预设 + 大波形 + 参数卡 + 目标阶跃 + 大字号读数。"""
+
+    # 环预设表：力矩类型/控制模式/曲线变量勾选（顺序 Target,Vq,Vd,Cq,Cd,Vel,Angle）
+    # /降采样/目标单位/默认幅值/0.5A 红线（仅电流环）
+    LOOPS = {
+        'current': dict(title='电流环', torque=2, motion=0,
+                        vars=[True, False, False, True, True, False, False],
+                        downsample=100, unit='A', default=0.15, redline=0.5,
+                        cards=('currentQ', 'currentD')),
+        'velocity': dict(title='速度环', torque=0, motion=1,
+                         vars=[True, True, False, False, False, True, False],
+                         downsample=100, unit='rad/s', default=3.0, redline=None,
+                         cards=('velocity',)),
+        'position': dict(title='位置环', torque=0, motion=2,
+                         vars=[True, False, False, False, False, True, True],
+                         downsample=100, unit='rad', default=1.5708, redline=None,
+                         cards=('position',)),
+    }
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        trace('[TUNE] TuningBenchWidget.__init__ enter')
+        self.device = SimpleFOCDevice.getInstance()
+        self.activeLoop = None
+
+        self.setObjectName('tuningBench')
+        self.verticalLayout = QtWidgets.QVBoxLayout(self)
+
+        # ── 连接条（复用零配置组件：端口下拉 + 获取参数 + 连接）──
+        self.connectionControl = ConnectionControlGroupBox()
+        self.verticalLayout.addWidget(self.connectionControl)
+
+        # ── 环选择：三个大按钮，互斥 ──
+        self.loopBar = QtWidgets.QFrame()
+        self.loopLayout = QtWidgets.QHBoxLayout(self.loopBar)
+        self.loopButtons = {}
+        for key, cfg in self.LOOPS.items():
+            btn = QtWidgets.QPushButton(cfg['title'])
+            btn.setCheckable(True)
+            btn.setMinimumHeight(42)
+            btn.clicked.connect(lambda checked, k=key: self.onLoopButton(k))
+            self.loopButtons[key] = btn
+            self.loopLayout.addWidget(btn)
+        self.loopLayout.addStretch(1)
+        self.verticalLayout.addWidget(self.loopBar)
+
+        # ── 主区：大波形（左） + 控制列（右）──
+        self.mainSplit = QtWidgets.QHBoxLayout()
+        self.graphicWidget = SimpleFOCGraphicWidget()
+        self.mainSplit.addWidget(self.graphicWidget, 5)
+
+        self.sideColumn = QtWidgets.QWidget()
+        self.sideLayout = QtWidgets.QVBoxLayout(self.sideColumn)
+
+        # 参数卡堆：按环显隐（电流环 Q/D 两张，速度/位置各一张）
+        d_ = self.device
+        self.pidCards = {
+            'velocity': PidCard('速度环 PID', d_, d_.PIDVelocity, d_.LPFVelocity),
+            'position': PidCard('位置环 P', d_, d_.PIDAngle, d_.LPFAngle),
+            'currentQ': PidCard('电流 Q 轴 PID', d_, d_.PIDCurrentQ, d_.LPFCurrentQ),
+            'currentD': PidCard('电流 D 轴 PID', d_, d_.PIDCurrentD, d_.LPFCurrentD),
+        }
+        for card in self.pidCards.values():
+            self.sideLayout.addWidget(card)
+            card.hide()
+
+        # ── 目标/激励控制 ──
+        self.targetBox = QtWidgets.QGroupBox('目标 / 阶跃激励')
+        self.targetGrid = QtWidgets.QGridLayout(self.targetBox)
+        self.targetInput = QtWidgets.QLineEdit()
+        self.targetInput.setMinimumWidth(70)
+        self.unitLabel = QtWidgets.QLabel('—')
+        self.unitLabel.setMinimumWidth(48)
+        self.targetGrid.addWidget(QtWidgets.QLabel('幅值'), 0, 0)
+        self.targetGrid.addWidget(self.targetInput, 0, 1)
+        self.targetGrid.addWidget(self.unitLabel, 0, 2)
+
+        self.zeroButton = QtWidgets.QPushButton('归零')
+        self.zeroButton.setToolTip('目标设 0（换环/收尾前先归零）')
+        self.zeroButton.clicked.connect(lambda: self.sendTarget(0.0))
+        self.plusButton = QtWidgets.QPushButton('▶ +幅值')
+        self.plusButton.clicked.connect(
+            lambda: self.sendTarget(self.targetValue()))
+        self.minusButton = QtWidgets.QPushButton('▶ −幅值')
+        self.minusButton.clicked.connect(
+            lambda: self.sendTarget(-self.targetValue()))
+        self.targetGrid.addWidget(self.zeroButton, 1, 0)
+        self.targetGrid.addWidget(self.plusButton, 1, 1)
+        self.targetGrid.addWidget(self.minusButton, 1, 2)
+
+        self.enableButton = QtWidgets.QPushButton('使能')
+        self.enableButton.setCheckable(True)
+        self.enableButton.clicked.connect(self.onEnableToggle)
+        self.targetGrid.addWidget(self.enableButton, 2, 0, 1, 3)
+
+        self.sideLayout.addWidget(self.targetBox)
+        self.sideLayout.addStretch(1)
+        self.mainSplit.addWidget(self.sideColumn, 2)
+        self.verticalLayout.addLayout(self.mainSplit, 1)
+
+        # ── 大字号读数行（数据来自 MG 轮询，零额外流量）──
+        self.readoutBar = QtWidgets.QFrame()
+        self.readoutLayout = QtWidgets.QHBoxLayout(self.readoutBar)
+        self.readoutLabels = {}
+        for key, name in (('target', '目标'), ('velocity', '速度'),
+                          ('angle', '角度')):
+            caption = QtWidgets.QLabel(name)
+            value = QtWidgets.QLabel('—')
+            font = value.font()
+            font.setPointSize(16)
+            font.setBold(True)
+            value.setFont(font)
+            value.setMinimumWidth(110)
+            self.readoutLabels[key] = value
+            self.readoutLayout.addWidget(caption)
+            self.readoutLayout.addWidget(value)
+        self.readoutLayout.addStretch(1)
+        self.verticalLayout.addWidget(self.readoutBar)
+
+        self.readoutTimer = QtCore.QTimer(self)
+        self.readoutTimer.setInterval(200)
+        self.readoutTimer.timeout.connect(self.refreshReadouts)
+        self.readoutTimer.start()
+
+        self.device.addConnectionStateListener(self)
+        self.connectionStateChanged(self.device.isConnected)
+        trace('[TUNE] TuningBenchWidget.__init__ done')
+
+    # ── 环预设 ─────────────────────────────────────────────
+    def onLoopButton(self, key):
+        btn = self.loopButtons[key]
+        if not btn.isChecked():  # 不允许手动取消选中：换环要点另一个环
+            btn.setChecked(True)
+            return
+        if not self.applyPreset(key):
+            btn.setChecked(False)
+
+    def applyPreset(self, key):
+        cfg = self.LOOPS[key]
+        if not self.device.isConnected:
+            QtWidgets.QMessageBox.information(
+                None, cfg['title'], '请先在上方连接条选端口并连接，再切环。')
+            return False
+        trace('[TUNE] apply preset loop=%r', key)
+        d_ = self.device
+        g = self.graphicWidget
+        panel = g.controlPlotWidget
+
+        # ① 目标归零（切环安全纪律，REF-12 §6.2）
+        d_.sendTargetValue(0)
+        # ②③ 力矩类型 + 控制模式
+        d_.sendTorqueType(cfg['torque'])
+        d_.sendControlType(cfg['motion'])
+        # ④ 曲线变量：程序化勾选，stateChanged 链路会自动重发 MMS 位图
+        for checkBox, want in zip(panel.signalCheckBox, cfg['vars']):
+            checkBox.setChecked(want)
+        # ⑤ 降采样
+        panel.downampleValue.setText(str(cfg['downsample']))
+        d_.sendMonitorDownsample(cfg['downsample'])
+        # ⑥ 参数卡显隐 + 目标单位/默认幅值
+        self.activeLoop = key
+        for other in self.loopButtons.values():
+            other.setChecked(other is self.loopButtons[key])
+        for cardKey, card in self.pidCards.items():
+            card.setVisible(cardKey in cfg['cards'])
+        self.unitLabel.setText(cfg['unit'])
+        self.targetInput.setText(str(cfg['default']))
+        self._updateTargetGuard()
+        # ⑦ 未开流则自动开流（开流动作会再发一遍 MMD+MMS，幂等）
+        if g.currentStatus is g.initialConnectedState:
+            panel.startStoPlotAction()
+        return True
+
+    # ── 目标 / 使能 ────────────────────────────────────────
+    def targetValue(self):
+        try:
+            return float(self.targetInput.text())
+        except ValueError:
+            QtWidgets.QMessageBox.warning(None, '目标', '幅值必须是数字。')
+            return 0.0
+
+    def sendTarget(self, value):
+        if not self.device.isConnected:
+            return
+        trace('[TUNE] send target=%r loop=%r', value, self.activeLoop)
+        self.device.sendTargetValue(value)
+
+    def _updateTargetGuard(self):
+        """电流环 0.5A 持续红线提示（SPEC-T）；其余环无红线。"""
+        cfg = self.LOOPS.get(self.activeLoop)
+        if cfg is None:
+            self.unitLabel.setStyleSheet('')
+            return
+        try:
+            value = float(self.targetInput.text())
+        except ValueError:
+            value = None
+        over = cfg['redline'] is not None and value is not None \
+            and abs(value) > cfg['redline']
+        self.unitLabel.setStyleSheet(
+            'color: red; font-weight: bold;' if over else '')
+        self.unitLabel.setToolTip(
+            '超过持续电流红线 0.5A（SPEC-T）！' if over else '')
+
+    def onEnableToggle(self, checked):
+        if not self.device.isConnected:
+            self.enableButton.setChecked(False)
+            return
+        self.device.sendDeviceStatus(1 if checked else 0)
+        self.enableButton.setText('使能' if checked else '失能')
+
+    # ── 读数 / 连接状态 ────────────────────────────────────
+    def refreshReadouts(self):
+        d_ = self.device
+        self.readoutLabels['target'].setText('%.3f' % float(d_.targetNow or 0))
+        self.readoutLabels['velocity'].setText('%.3f' % float(d_.velocityNow or 0))
+        self.readoutLabels['angle'].setText('%.3f' % float(d_.angleNow or 0))
+
+    def connectionStateChanged(self, isConnected):
+        trace('[TUNE] connectionStateChanged connected=%r', isConnected)
+        for btn in self.loopButtons.values():
+            btn.setEnabled(isConnected)
+        if not isConnected:
+            self.enableButton.setChecked(False)
+            self.enableButton.setText('使能')
+
+    # ── Tab 接口 ───────────────────────────────────────────
+    def getTabIcon(self):
+        return GUIToolKit.getIconByName('loop')
+
+    def getTabName(self):
+        return '三环整定'
