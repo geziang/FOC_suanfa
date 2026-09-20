@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import collections
+import csv
 import logging
+import time
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt5 import QtWidgets
+from PyQt5 import QtCore, QtWidgets
 
 from src.gui.sharedcomnponets.sharedcomponets import GUIToolKit
 from src.simpleFOCConnector import SimpleFOCDevice
@@ -12,10 +15,23 @@ from src.debugTrace import trace, trace_exception, trace_verbose
 
 
 class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
+    """实时曲线：限频 + 合并重绘（2026-09-20 改造，收口见 REF-12）。
+
+    收数与重绘解耦：串口行回调只校验 + 入队（有界 deque），QTimer 每帧
+    把积压批量搬入显示数组并统一重绘一次。成本从"行率×全量重绘"降为
+    "重绘率×全量重绘"，界面事件队列不再被逐行小事件淹没（此前降采样
+    100×7 变量即冻结的根因）。实时性取决于串口收数与缓冲，与屏幕刷新
+    率无关——20Hz 对人眼已足够，60Hz 是上限，再高只是浪费 CPU。
+    半行/坏行（断开冲刷的残行等）在入队前整行丢弃，绝不进缓冲。
+    """
+
     disconnectedState = 0
     initialConnectedState = 1
     connectedPausedState = 2
     connectedPlottingStartedState = 3
+
+    PLOT_FRAME_MS = 50     # 重绘帧周期：50ms=20Hz。勿再调小，见类 docstring
+    PENDING_MAXLEN = 2048  # 串口行积压上限：GUI 偶发停顿时丢旧保新，内存有界
 
     
     signals = ['Target', 'Vq','Vd','Cq','Cd','Vel','Angle']
@@ -33,9 +49,12 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
         self.horizontalLayout = QtWidgets.QVBoxLayout(self)
         self.device = SimpleFOCDevice.getInstance()
 
-        self.numberOfSamples = 300
+        # 2026-09-20：300→1000 点。20Hz 重绘下全量 setData 成本可忽略，
+        # 换来更长的时间窗（覆盖 2~4 秒的阶跃整拍，SPEC-T 判据需要）
+        self.numberOfSamples = 1000
 
-        pg.setConfigOptions(antialias=True)
+        # 抗锯齿是全量重绘成本的放大器，关掉换帧率
+        pg.setConfigOptions(antialias=False)
         self.plotWidget = pg.PlotWidget()
         trace('[UI] plot widget created; pyqtgraph=%s', getattr(pg, '__version__', '?'))
         self.plotWidget.showGrid(x=True, y=True, alpha=0.5)
@@ -73,6 +92,17 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
         self.device.commProvider.monitoringDataReceived.connect(
             self.upDateGraphic)
 
+        # 收数/重绘解耦的缓冲与重绘定时器（见类 docstring）。
+        # 定时器常开：非绘图态下行回调直接丢弃、队列为空，帧回调为空操作。
+        self.pendingSamples = collections.deque(maxlen=self.PENDING_MAXLEN)
+        self.droppedRows = 0
+        self._enabledIndices = np.where(
+            np.array(self.signalPlotFlags) == True)[0]
+        self.plotTimer = QtCore.QTimer(self)
+        self.plotTimer.setInterval(self.PLOT_FRAME_MS)
+        self.plotTimer.timeout.connect(self.drainAndRedraw)
+        self.plotTimer.start()
+
         self.currentStatus = self.disconnectedState
         self.controlPlotWidget.pauseContinueButton.setDisabled(True)
 
@@ -108,6 +138,9 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
             elif (not checkBox.isChecked()) and plotFlag:
                 self.signalPlotFlags[i]  = False
                 self.plotWidget.removeItem( self.signalPlots[i] )
+        # 勾选变化后刷新列数缓存：入队校验按它对列数
+        # （勾选变化会经 updateMonitorVariables 同步重发 MMS 位图，两端保持一致）
+        self._enabledIndices = np.where(np.array(self.signalPlotFlags) == True)[0]
 
     def connectioStatusUpdate(self, connectedFlag):
         if connectedFlag:
@@ -116,25 +149,68 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
             self.currentStatus = self.disconnectedState
 
     def upDateGraphic(self, signalList):
+        """串口行回调（RX 线程投递到 GUI 线程）：只校验 + 入队，不做任何绘图。"""
         trace_verbose('[PLOT RX] signalList=%r status=%r', signalList, self.currentStatus)
-        if self.currentStatus is self.connectedPlottingStartedState or \
-                self.currentStatus is self.connectedPausedState:
-
+        if self.currentStatus is not self.connectedPlottingStartedState and \
+                self.currentStatus is not self.connectedPausedState:
+            return
+        try:
             signals = np.array(signalList, dtype=float)
-            signalIndex = 0
+        except (ValueError, TypeError):
+            self.droppedRows += 1  # 非数值字段：整行丢弃
+            return
+        if signals.ndim != 1 or signals.size != len(self._enabledIndices):
+            self.droppedRows += 1  # 半行/列数与勾选数不符：整行丢弃
+            trace_verbose('[PLOT] row dropped (total=%d)', self.droppedRows)
+            return
+        self.pendingSamples.append(tuple(float(v) for v in signals))
 
-            enabled = np.where(np.array(self.signalPlotFlags) == True)[0]
+    def drainAndRedraw(self):
+        """QTimer 帧回调：积压批量搬入显示数组（每帧一次移位），统一重绘一次。
 
-            if(len(enabled) != len(signals)):
-                logging.warning('Arrived corrupted data')
-                return
-            else:
-                for i, ind in enumerate(enabled):
-                    self.signalDataArrays[ind] = np.roll(self.signalDataArrays[ind], -1)
-                    self.signalDataArrays[ind][-1] = signals[i]
+        暂停态照常填充数组（可暂停后导出整段），只是不重绘。
+        """
+        k = len(self.pendingSamples)
+        if k == 0:
+            return
+        rows = np.array(self.pendingSamples)
+        self.pendingSamples.clear()
+        n = self.numberOfSamples
+        m = min(k, n)
+        for i, ind in enumerate(self._enabledIndices):
+            arr = self.signalDataArrays[ind]
+            if m < n:
+                arr[:n - m] = arr[m:]
+            arr[n - m:] = rows[:, i][-m:]
+        if self.currentStatus is self.connectedPlottingStartedState:
+            self.updatePlot()
 
-            if self.currentStatus is self.connectedPlottingStartedState:
-                self.updatePlot()
+    def exportCsv(self):
+        """导出当前显示缓冲为 CSV（显示与记录分离：导的是显示缓冲，非全量流）。"""
+        enabled = [int(i) for i in self._enabledIndices]
+        if not enabled:
+            QtWidgets.QMessageBox.information(
+                None, '导出CSV', '没有勾选任何变量，先勾选再导出。')
+            return
+        defaultName = time.strftime('fockit_plot_%Y%m%d_%H%M%S.csv')
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            None, '导出曲线缓冲 CSV', defaultName, 'CSV files (*.csv)')
+        if not path:
+            return
+        headers = ['sample'] + [self.signals[i] for i in enabled]
+        columns = [self.signalDataArrays[i] for i in enabled]
+        with open(path, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+            for r in range(self.numberOfSamples):
+                writer.writerow(
+                    [r - self.numberOfSamples] + [float(c[r]) for c in columns])
+        trace('[PLOT] CSV exported path=%r points=%d vars=%d dropped=%d',
+              path, self.numberOfSamples, len(enabled), self.droppedRows)
+        QtWidgets.QMessageBox.information(
+            None, '导出CSV',
+            '已导出 %d 点 × %d 变量（丢弃行 %d）：\n%s' %
+            (self.numberOfSamples, len(enabled), self.droppedRows, path))
 
 
     def computeStatic(self, array):
@@ -149,8 +225,6 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
         for i, plotFlag in enumerate(self.signalPlotFlags):
             if plotFlag:
                 self.signalPlots[i].setData(self.timeArray, self.signalDataArrays[i])
-                self.signalPlots[i].updateItems()
-                self.signalPlots[i].sigPlotChanged.emit(self.signalPlots[i])
 
 
 class ControlPlotPanel(QtWidgets.QWidget):
@@ -189,6 +263,16 @@ class ControlPlotPanel(QtWidgets.QWidget):
         self.zoomAllButton.setIcon(GUIToolKit.getIconByName('zoomall'))
         self.zoomAllButton.clicked.connect(self.zoomAllPlot)
         self.horizontalLayout1.addWidget(self.zoomAllButton)
+
+        self.exportCsvButton = QtWidgets.QPushButton(self)
+        self.exportCsvButton.setObjectName('exportCsvButton')
+        self.exportCsvButton.setText('导出CSV')
+        self.exportCsvButton.setIcon(GUIToolKit.getIconByName('save'))
+        self.exportCsvButton.setToolTip(
+            '把当前显示缓冲（1000 点）存为 CSV。\n'
+            '暂停态下缓冲仍在填充：可先暂停冻结画面，再导出整段。')
+        self.exportCsvButton.clicked.connect(self.exportCsvAction)
+        self.horizontalLayout1.addWidget(self.exportCsvButton)
 
         self.signalCheckBox = []
         for i in range(len(self.controlledPlot.signals)):
@@ -265,6 +349,10 @@ class ControlPlotPanel(QtWidgets.QWidget):
     def zoomAllPlot(self):
         trace('[UI] zoomAllPlot clicked')
         self.controlledPlot.plotWidget.enableAutoRange()
+
+    def exportCsvAction(self):
+        trace('[UI] export CSV clicked')
+        self.controlledPlot.exportCsv()
 
     def changeDownsampling(self):
         trace('[UI] changeDownsampling value=%r status=%r', self.downampleValue.text(), self.controlledPlot.currentStatus)
