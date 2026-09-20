@@ -57,13 +57,28 @@ void SerialShell::dispatch_() {
     tok = strtok(nullptr, " \t");
   }
   if (argc == 0) return;
+  for (char* p = argv[0]; *p != 0; ++p) *p = (char)tolower(*p);
+
+  const char* cmd = argv[0];
+
+  // ── 自动接管（2026-09-20）：上位机协议命令不再换回"未知命令"5 行 ──
+  // 1) 本拍内已让位：同一批到达的后续行一律转交会话，shell 不再插话；
+  // 2) 大写开头且不是 shell 自己的命令字 = 上位机协议命令（绑定/轮询/pull config）→
+  //    自动进会话并转交。判别依据：本 shell 命令集全为小写，大写要么是人工误触 CapsLock
+  //    （命令字仍在白名单内，照常走 shell），要么就是协议命令。
+  if (studioMode_) {
+    autoEnterStudio_(rawLine);
+    return;
+  }
+  if (upperHead && !isShellCommand_(cmd)) {
+    autoEnterStudio_(rawLine);
+    return;
+  }
+
   port_->print(F("[FW SHELL] dispatch raw='"));
   port_->print(rawLine);
   port_->print(F("' argc="));
   port_->println(argc);
-  for (char* p = argv[0]; *p != 0; ++p) *p = (char)tolower(*p);
-
-  const char* cmd = argv[0];
 
   if (!strcmp(cmd, "help")) {
     printHelp_();
@@ -136,19 +151,60 @@ void SerialShell::dispatch_() {
   } else if (userCb_ != nullptr && userCb_(argc, argv)) {
     // 用户自定义命令已消费（处理器自行打印反馈）
   } else {
-    port_->print(F("未知命令："));
-    port_->println(rawLine);
-    // 大写字母开头是 SimpleFOC Studio 协议命令的特征（MC/MVP/ME1…）。
-    // 若上位机已连接却走到这里，说明固件还在 shell、没有进入 studio 会话，
-    // 或 Studio 连接对话框的命令ID 没填 M（裸命令 Commander 会静默丢弃）。
-    if (upperHead) {
-      port_->println(F("[FW SHELL] uppercase protocol command received while shell active"));
-      port_->println(F("[Studio] 收到大写协议命令，但当前在 FocKit shell（未进上位机会话）"));
-      port_->println(F("[Studio] 处理：串口终端先输 studio 再连接；Studio 连接对话框命令ID 必须填 M"));
+    // 节流（2026-09-20）：未知命令回执每秒最多一次。命令源异常（未进会话的上位机、
+    // 噪声、脚本）连发时不再每条换回 2~5 行，只在窗口边界报告一次并给出被压掉的数量。
+    uint32_t now = millis();
+    bool windowOpen = (lastUnknownMs_ != 0) && (now - lastUnknownMs_ < 1000);
+    if (windowOpen) {
+      ++unknownSuppressed_;
     } else {
-      port_->println(F("输入 help 查看全部命令"));
+      if (unknownSuppressed_ > 0) {
+        port_->printf("[FW SHELL] 上一秒内另有 %lu 条未知命令被静默节流\n",
+                      (unsigned long)unknownSuppressed_);
+      }
+      unknownSuppressed_ = 0;
+      lastUnknownMs_ = now;
+      port_->print(F("未知命令："));
+      port_->println(rawLine);
+      // 大写字母开头是 SimpleFOC Studio 协议命令的特征（MC/MVP/ME1…）。
+      // 正常已由自动接管消化；走到这里说明它恰好与 shell 命令字重名（如 T 缺参数），
+      // 或会话桥未挂载（attachStudio 为空）。
+      if (upperHead) {
+        port_->println(F("[Studio] 该大写命令未被识别（与 shell 命令字重名或缺参数）"));
+        port_->println(F("[Studio] 处理：上位机连接对话框命令ID 必须填 M；或串口终端先输 studio"));
+      } else {
+        port_->println(F("输入 help 查看全部命令"));
+      }
     }
   }
+}
+
+bool SerialShell::isShellCommand_(const char* cmd) {
+  static const char* kOwn[] = {
+      "help", "on", "off", "idle", "t", "v", "p", "pid",
+      "st", "stream", "save", "dbg", "sel", "studio",
+  };
+  for (unsigned i = 0; i < sizeof(kOwn) / sizeof(kOwn[0]); ++i) {
+    if (!strcmp(cmd, kOwn[i])) return true;
+  }
+  return false;
+}
+
+void SerialShell::autoEnterStudio_(const char* rawLine) {
+  if (studio_ == nullptr) {  // 无会话可交：一行说明即止，不回 5 行
+    port_->println(F("[FW SHELL] 收到上位机协议命令，但未绑定会话（attachStudio 为空）"));
+    return;
+  }
+  if (!studioMode_) {
+    streaming_ = false;
+    studioMode_ = true;
+    port_->println(F("[FW SHELL] 检测到上位机协议命令，自动进入 Studio 会话（shell 让位；复位可返回）"));
+  }
+  // 补齐行尾 eol：Commander 的 isSentinel() 靠行尾字符判定 GET/SET（缺了就变成"写 0"），
+  // 而 shell 的 buf_ 里没有换行符，必须在这里补回。
+  char proto[56];
+  snprintf(proto, sizeof(proto), "%s\n", rawLine);
+  studio_->handleLine(proto);
 }
 
 void SerialShell::printHelp_() {
@@ -166,6 +222,7 @@ void SerialShell::printHelp_() {
   port_->println(F("  dbg on|off      详细日志开关（Studio 探针 + 固件周期探针）；默认关，常态仅 1 行/秒心跳"));
   port_->println(F("  studio          进入 SimpleFOC Studio 上位机会话（退出按复位）"));
   port_->println(F("  sel <0|1>       切换受控电机（需绑定 MotorManager）"));
+  port_->println(F("说明：上位机协议命令（M 开头）会自动接管串口并进入会话，无需先手工输 studio。"));
 }
 
 void SerialShell::printState_(bool withHeader) {

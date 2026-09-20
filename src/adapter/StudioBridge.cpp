@@ -43,8 +43,20 @@ void StudioBridge::update() {
 
 void StudioBridge::onMotorCmd_(char* cmd) {
   if (self_ == nullptr) return;
-  if (self_->motor_ == nullptr) {
-    if (self_->dbgPort_) self_->dbgPort_->println(F("[FW STUDIO] callback dropped: motor is null"));
+  // Commander 回调只传"去掉注册 ID"之后的命令体（Commander.cpp run(): &user_input[1]）
+  self_->handleCmd_(cmd);
+}
+
+void StudioBridge::handleLine(char* line) {
+  // shell 转交的是整行（含注册 ID 与行尾 eol）。非本会话 ID 的行与 Commander 的分发语义
+  // 保持一致：无人认领 → 静默丢弃（绝不回"未知命令"，这正是刷屏的源头）。
+  if (line == nullptr || line[0] != kCmdId) return;
+  handleCmd_(&line[1]);
+}
+
+void StudioBridge::handleCmd_(char* cmd) {
+  if (motor_ == nullptr) {
+    if (dbgPort_) dbgPort_->println(F("[FW STUDIO] command dropped: motor is null"));
     return;
   }
 
@@ -57,19 +69,18 @@ void StudioBridge::onMotorCmd_(char* cmd) {
   raw[i] = 0;
 
   bool isGet = isGetCmd_(raw);
-  if (self_->trace_ && self_->dbgPort_) {
-    self_->dbgPort_->print(F("[FW STUDIO] callback received raw='M"));
-    self_->dbgPort_->print(raw);
-    self_->dbgPort_->println(F("'"));
-    self_->dbgPort_->print(F("[FW STUDIO] command class="));
-    self_->dbgPort_->println(isGet ? F("get") : F("set"));
+  if (trace_ && dbgPort_) {
+    dbgPort_->print(F("[FW STUDIO] callback received raw='M"));
+    dbgPort_->print(raw);
+    dbgPort_->println(F("'"));
+    dbgPort_->print(F("[FW STUDIO] command class="));
+    dbgPort_->println(isGet ? F("get") : F("set"));
+    dbgPort_->println(F("[FW STUDIO] forwarding to SimpleFOC"));
   }
+  cmd_.motor(&motor_->rawMotor(), cmd);  // 先执行（生效）
+  if (trace_ && dbgPort_) dbgPort_->println(F("[FW STUDIO] forwarding returned"));
 
-  if (self_->trace_ && self_->dbgPort_) self_->dbgPort_->println(F("[FW STUDIO] forwarding to SimpleFOC"));
-  self_->cmd_.motor(&self_->motor_->rawMotor(), cmd);  // 先执行（生效）
-  if (self_->trace_ && self_->dbgPort_) self_->dbgPort_->println(F("[FW STUDIO] forwarding returned"));
-
-  if (!isGet) self_->describeSet_(raw);  // 再回读，打印确认
+  if (!isGet) describeSet_(raw);  // 再回读，打印确认
 }
 
 bool StudioBridge::isGetCmd_(const char* r) {

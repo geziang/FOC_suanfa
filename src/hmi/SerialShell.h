@@ -32,6 +32,10 @@ private:
   void dispatch_();
   void printHelp_();
   void printState_(bool withHeader);
+  /// 是否为 shell 自己的命令字（用于区分"大写开头"里的人工命令与上位机协议命令）
+  static bool isShellCommand_(const char* cmd);
+  /// 自动让位：置会话态并把整行转交给会话桥（幂等：已在会话态则只转交）
+  void autoEnterStudio_(const char* rawLine);
 
   IMotor* motor_ = nullptr;
   Stream* port_ = nullptr;
@@ -47,6 +51,8 @@ private:
   int len_ = 0;
   bool streaming_ = false;
   uint32_t lastStreamMs_ = 0;
+  uint32_t lastUnknownMs_ = 0;      // 未知命令回执节流窗口起点
+  uint32_t unknownSuppressed_ = 0;  // 当前窗口内被静默压掉的条数
 };
 
 } // namespace fockit

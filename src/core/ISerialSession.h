@@ -16,6 +16,10 @@ public:
   /// 诊断探针开关（默认空实现；会话实现可覆盖）。
   /// 关闭时仍应保留最低限度的"设置类按钮确认打印"，开启后追加逐条命令回显与周期快照。
   virtual void setTrace(bool /*on*/) {}
+  /// 把一条原始协议行整行交给本会话处理——由 SerialShell 在检测到上位机协议命令时调用，
+  /// 用于"shell 自动让位给会话"：行须含注册 ID 与行尾 eol 字符（见 Commander 的哨兵语义）。
+  /// 默认空实现：非协议会话静默丢弃。
+  virtual void handleLine(char* /*line*/) {}
 };
 
 } // namespace fockit

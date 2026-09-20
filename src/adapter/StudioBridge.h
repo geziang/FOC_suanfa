@@ -12,6 +12,10 @@
 // - 回执行一律 '[' 开头、纯中文标签：SimpleFOC Studio 解析器对非数字开头、且不含
 //   PID/Motion/Torque/Status/Limits/Monitor 等英文标记的行会直接忽略，不污染参数与曲线。
 //
+// 自动接管（2026-09-20 增）：上位机连上后不等人工输 `studio` —— SerialShell 识别到
+// 注册 ID 开头的协议命令即置会话态并把整行转交 handleLine()，shell 立刻让位。
+// 目的：上位机在 shell 态持续发 MG0~MG6/pull config 时，不再换来每条 5 行的"未知命令"回执。
+//
 // 约束与纪律：
 // 1. Commander/SimpleFOC 类型只允许存在于本文件与 SimpleFocMotor（契约边界，ARC-01 §2）；
 // 2. Studio 在线改的 PID/限幅是 RAM 值，重启即失——调好后必须抄回代码配置，
@@ -29,6 +33,9 @@ class StudioBridge : public ISerialSession {
 public:
   explicit StudioBridge(Stream& port = Serial) : cmd_(port), dbgPort_(&port) {}
 
+  /// Commander 注册 ID（上位机"命令ID"须与之对应；shell 自动接管按此字符甄别）
+  static constexpr char kCmdId = 'M';
+
   /// 绑定电机并注册 Commander 通道
   void begin(SimpleFocMotor* m) {
     motor_ = m;
@@ -37,7 +44,7 @@ public:
     BLDCMotor& bm = m->rawMotor();
     bm.monitor_variables = _MON_TARGET | _MON_VEL | _MON_ANGLE;
     bm.monitor_downsample = 0;  // 初始静默，由 Studio 端开启数据流
-    cmd_.add('M', StudioBridge::onMotorCmd_, "motor");
+    cmd_.add(kCmdId, StudioBridge::onMotorCmd_, "motor");
     if (dbgPort_) dbgPort_->println(F("[FW STUDIO] begin complete"));
   }
 
@@ -45,10 +52,16 @@ public:
   void update() override;
   /// true：逐条命令回显 + 1s 状态快照；false（默认）：仅设置类按钮中文确认
   void setTrace(bool on) override;
+  /// 整行协议命令转交（含注册 ID 字符与行尾 eol）：shell 自动接管入口
+  void handleLine(char* line) override;
 
 private:
   // Commander 回调是裸函数指针，用单实例静态指针转发
   static void onMotorCmd_(char* cmd);
+
+  // 命令执行主体：两条入口（Commander 回调 / shell 转交）共用；
+  // 入参为去掉注册 ID 之后的命令体，且需保留行尾 eol 字符（Commander 以此判 GET/SET）
+  void handleCmd_(char* body);
 
   // 探针实现
   void describeSet_(const char* raw);   // 设置类命令生效后回读确认
