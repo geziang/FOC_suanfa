@@ -38,6 +38,9 @@ class SimpleFocMotor : public IMotor {
 public:
   explicit SimpleFocMotor(const SimpleFocMotorConfig& cfg);
 
+  /// 在 Arduino setup() 中、Serial.begin() 之后初始化 NVS 标定存储。
+  bool beginStorage();
+
   // ---- IMotor ----
   bool init() override;
   void enable() override;

@@ -23,11 +23,17 @@ public:
   explicit CalibrationStore(const char* ns = "fockit");
   ~CalibrationStore();
 
+  /// 在 Arduino setup() 中、Serial.begin() 之后调用一次。
+  bool begin();
+  bool isReady() const { return ready_; }
+
   bool save(const char* key, const MotorCalib& c);   // key ≤ 15 字符，如 "m0"
   bool load(const char* key, MotorCalib& out);
   void remove(const char* key);
 
 private:
+  const char* ns_ = "fockit";
+  bool ready_ = false;
   Preferences prefs_;
 };
 

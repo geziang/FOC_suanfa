@@ -47,6 +47,14 @@ SimpleFocMotor::SimpleFocMotor(const SimpleFocMotorConfig& cfg)
       motor_(cfg.profile.polePairs),
       limits_(cfg.limits) {}
 
+bool SimpleFocMotor::beginStorage() {
+  Serial.println(F("[EXP MOTOR] beginStorage enter"));
+  bool ok = store_.begin();
+  Serial.printf("[EXP MOTOR] beginStorage returned ok=%d ready=%d\n",
+                ok ? 1 : 0, store_.isReady() ? 1 : 0);
+  return ok;
+}
+
 bool SimpleFocMotor::init() {
   Serial.printf("[EXP MOTOR] init enter id='%s' inited=%d\n", cfg_.id, inited_ ? 1 : 0);
   if (inited_) {

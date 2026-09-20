@@ -176,6 +176,8 @@ void setup() {
   Serial.begin(115200);
   Serial.println(F("[FW BOOT] Serial.begin done"));
   delay(300);
+  bool storageOk = motor.beginStorage();
+  Serial.printf("[FW BOOT] motor.beginStorage returned ok=%d\n", storageOk ? 1 : 0);
   dengfoc_v4::earlyInit();
   Serial.println(F("[FW BOOT] earlyInit done"));
   power.begin();
