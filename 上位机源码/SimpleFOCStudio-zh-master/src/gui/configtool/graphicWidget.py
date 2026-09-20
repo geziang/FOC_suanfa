@@ -103,6 +103,11 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
         self.plotTimer.timeout.connect(self.drainAndRedraw)
         self.plotTimer.start()
 
+        # 视图缩放系数（2026-09-20）：≠1 的轴在重绘时按"跟随数据"的定幅视图套用，
+        # =1 保持原自动范围行为；由面板 X×/Y× 输入框驱动，见 setViewScale
+        self.viewXFactor = 1.0
+        self.viewYFactor = 1.0
+
         self.currentStatus = self.disconnectedState
         self.controlPlotWidget.pauseContinueButton.setDisabled(True)
 
@@ -220,11 +225,43 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
         min = np.min(array)
         meadian = np.median(array)
 
+    def setViewScale(self, xFactor, yFactor):
+        """视图缩放系数：>1 放大看细节，<1 拉远，=1 恢复该轴自动范围。
+
+        X：窗口 = 全窗/系数，右端始终锚定最新数据（持续跟新的细节窗）；
+        Y：可见窗口内启用通道的数据包络 / 系数。系数在 updatePlot 里逐帧套用。
+        """
+        self.viewXFactor = float(xFactor)
+        self.viewYFactor = float(yFactor)
+        vb = self.plotWidget.getViewBox()
+        vb.enableAutoRange(x=(self.viewXFactor == 1.0),
+                           y=(self.viewYFactor == 1.0))
+        if self.viewXFactor == 1.0 or self.viewYFactor == 1.0:
+            # 回归自动的轴立即拟合一次：静态数据下 setData 不会触发重算
+            vb.autoRange()
+
     def updatePlot(self):
         trace_verbose('[PLOT] updatePlot enter enabled=%r', self.signalPlotFlags)
         for i, plotFlag in enumerate(self.signalPlotFlags):
             if plotFlag:
                 self.signalPlots[i].setData(self.timeArray, self.signalDataArrays[i])
+        # 视图缩放：仅对系数≠1 的轴套用（=1 轴维持自动范围，原行为不变）
+        if self.viewXFactor != 1.0 or self.viewYFactor != 1.0:
+            visible = max(10, int(self.numberOfSamples / self.viewXFactor))
+            if self.viewXFactor != 1.0:
+                self.plotWidget.setXRange(-visible, 0, padding=0)
+            if self.viewYFactor != 1.0:
+                enabled = [int(i) for i in self._enabledIndices]
+                if enabled:
+                    window = [self.signalDataArrays[i][-visible:]
+                              for i in enabled]
+                    lo = min(col.min() for col in window)
+                    hi = max(col.max() for col in window)
+                    center = (lo + hi) / 2.0
+                    half = max((hi - lo) / 2.0, abs(center) * 0.05 + 1e-6) \
+                        / self.viewYFactor
+                    self.plotWidget.setYRange(center - half, center + half,
+                                              padding=0)
 
 
 class ControlPlotPanel(QtWidgets.QWidget):
@@ -301,6 +338,27 @@ class ControlPlotPanel(QtWidgets.QWidget):
         self.horizontalLayout1.addWidget(self.downsampleLabel)
         self.horizontalLayout1.addWidget(self.downampleValue)
 
+        # 视图缩放（2026-09-20）：X/Y 倍数，回车生效；>1 放大看细节，<1 拉远，
+        # 1 自动（原行为）。「显示所有」复位两系数。
+        self.xScaleEdit = QtWidgets.QLineEdit(self)
+        self.xScaleEdit.setText('1')
+        self.xScaleEdit.setMaximumWidth(42)
+        self.xScaleEdit.setToolTip(
+            'X 倍数：>1 放大（窗口=全窗/倍数，右端锁定最新点），<1 拉远，1 自动。\n'
+            '例：填 4 只看最近 250 点，配合 Y 倍数观察波形细节。')
+        self.xScaleEdit.editingFinished.connect(self.changeViewScale)
+        self.yScaleEdit = QtWidgets.QLineEdit(self)
+        self.yScaleEdit.setText('1')
+        self.yScaleEdit.setMaximumWidth(42)
+        self.yScaleEdit.setToolTip(
+            'Y 倍数：>1 放大可见窗口的数据包络，<1 拉远，1 自动。')
+        self.yScaleEdit.editingFinished.connect(self.changeViewScale)
+        self.horizontalLayout1.addWidget(QtWidgets.QLabel('视图缩放'))
+        self.horizontalLayout1.addWidget(QtWidgets.QLabel('X×'))
+        self.horizontalLayout1.addWidget(self.xScaleEdit)
+        self.horizontalLayout1.addWidget(QtWidgets.QLabel('Y×'))
+        self.horizontalLayout1.addWidget(self.yScaleEdit)
+
         self.verticalLayout.addLayout(self.horizontalLayout1)
         trace('[UI] ControlPlotPanel.__init__ done')
 
@@ -348,7 +406,24 @@ class ControlPlotPanel(QtWidgets.QWidget):
 
     def zoomAllPlot(self):
         trace('[UI] zoomAllPlot clicked')
+        # 显示所有 = 复位视图缩放系数并恢复双轴自动范围
+        self.controlledPlot.setViewScale(1.0, 1.0)
+        self.xScaleEdit.setText('1')
+        self.yScaleEdit.setText('1')
         self.controlledPlot.plotWidget.enableAutoRange()
+
+    def changeViewScale(self):
+        try:
+            xFactor = float(self.xScaleEdit.text())
+            yFactor = float(self.yScaleEdit.text())
+            if xFactor <= 0 or yFactor <= 0:
+                raise ValueError
+        except ValueError:
+            self.xScaleEdit.setText('1')
+            self.yScaleEdit.setText('1')
+            xFactor = yFactor = 1.0
+        trace('[UI] view scale changed x=%r y=%r', xFactor, yFactor)
+        self.controlledPlot.setViewScale(xFactor, yFactor)
 
     def exportCsvAction(self):
         trace('[UI] export CSV clicked')
