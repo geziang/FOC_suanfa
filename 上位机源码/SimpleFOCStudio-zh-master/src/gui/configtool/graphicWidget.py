@@ -273,6 +273,20 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
         min = np.min(array)
         meadian = np.median(array)
 
+    def clearPlot(self):
+        """清图：显示缓冲清零 + 队列清空 + 判据标注线隐藏，立即重绘。
+
+        纯本地视图操作：不发串口命令、曲线流不断、缩放/降采样/判据数值保留。
+        """
+        trace('[PLOT] clear plot')
+        for arr in self.signalDataArrays:
+            arr[:] = 0.0
+        self.pendingSamples.clear()
+        for line in (self.targetLine, self.bandHiLine, self.bandLoLine):
+            line.hide()
+        if self.currentStatus is self.connectedPlottingStartedState:
+            self.updatePlot()
+
     def setViewScale(self, xFactor, yFactor):
         """视图缩放系数：>1 放大看细节，<1 拉远，=1 恢复该轴自动范围。
 
@@ -436,6 +450,17 @@ class ControlPlotPanel(QtWidgets.QWidget):
         self.exportCsvButton.clicked.connect(self.exportCsvAction)
         self.horizontalLayout1.addWidget(self.exportCsvButton)
 
+        self.clearPlotButton = QtWidgets.QPushButton(self)
+        self.clearPlotButton.setObjectName('clearPlotButton')
+        self.clearPlotButton.setText('清图')
+        self.clearPlotButton.setIcon(GUIToolKit.getIconByName('restart'))
+        self.clearPlotButton.setToolTip(
+            '清空曲线缓冲与判据标注线，立即重绘。\n'
+            '纯本地操作：曲线流不断，缩放/降采样/判据数值保留。\n'
+            '换一档参数重新测阶跃前先清屏。')
+        self.clearPlotButton.clicked.connect(self.clearPlotAction)
+        self.horizontalLayout1.addWidget(self.clearPlotButton)
+
         self.signalCheckBox = []
         for i in range(len(self.controlledPlot.signals)):
             checkBox = QtWidgets.QCheckBox(self)
@@ -553,6 +578,10 @@ class ControlPlotPanel(QtWidgets.QWidget):
     def exportCsvAction(self):
         trace('[UI] export CSV clicked')
         self.controlledPlot.exportCsv()
+
+    def clearPlotAction(self):
+        trace('[UI] clear plot clicked')
+        self.controlledPlot.clearPlot()
 
     def changeDownsampling(self):
         trace('[UI] changeDownsampling value=%r status=%r', self.downampleValue.text(), self.controlledPlot.currentStatus)
