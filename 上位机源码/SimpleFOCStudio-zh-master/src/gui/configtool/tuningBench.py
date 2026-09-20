@@ -169,6 +169,17 @@ class TuningBenchWidget(WorkAreaTabWidget):
         self.targetGrid.addWidget(self.targetInput, 0, 1)
         self.targetGrid.addWidget(self.unitLabel, 0, 2)
 
+        # 当前目标实时回读（MG0 轮询，0.2s 刷新）：显示电机此刻的真实目标，
+        # 与"幅值（想设多少）"语义分开；阶跃点下后看它确认命令已生效
+        self.currentTargetLabel = QtWidgets.QLabel('—')
+        currentFont = self.currentTargetLabel.font()
+        currentFont.setPointSize(18)
+        currentFont.setBold(True)
+        self.currentTargetLabel.setFont(currentFont)
+        self.currentTargetLabel.setStyleSheet('color:#e53935;')
+        self.targetGrid.addWidget(QtWidgets.QLabel('当前目标'), 1, 0)
+        self.targetGrid.addWidget(self.currentTargetLabel, 1, 1, 1, 2)
+
         self.zeroButton = QtWidgets.QPushButton('归零')
         self.zeroButton.setToolTip('目标设 0（换环/收尾前先归零）')
         self.zeroButton.clicked.connect(lambda: self.sendTarget(0.0))
@@ -178,14 +189,14 @@ class TuningBenchWidget(WorkAreaTabWidget):
         self.minusButton = QtWidgets.QPushButton('▶ −幅值')
         self.minusButton.clicked.connect(
             lambda: self.sendTarget(-self.targetValue()))
-        self.targetGrid.addWidget(self.zeroButton, 1, 0)
-        self.targetGrid.addWidget(self.plusButton, 1, 1)
-        self.targetGrid.addWidget(self.minusButton, 1, 2)
+        self.targetGrid.addWidget(self.zeroButton, 2, 0)
+        self.targetGrid.addWidget(self.plusButton, 2, 1)
+        self.targetGrid.addWidget(self.minusButton, 2, 2)
 
         self.enableButton = QtWidgets.QPushButton('使能')
         self.enableButton.setCheckable(True)
         self.enableButton.clicked.connect(self.onEnableToggle)
-        self.targetGrid.addWidget(self.enableButton, 2, 0, 1, 3)
+        self.targetGrid.addWidget(self.enableButton, 3, 0, 1, 3)
 
         self.sideLayout.addWidget(self.targetBox)
         self.sideLayout.addStretch(1)
@@ -193,18 +204,27 @@ class TuningBenchWidget(WorkAreaTabWidget):
         self.verticalLayout.addLayout(self.mainSplit, 1)
 
         # ── 大字号读数行（数据来自 MG 轮询，零额外流量）──
+        # 颜色与曲线一一对应（Target=红 / Vel=橙 / Angle=绿，同 signalColors），
+        # 图上看哪条线、下面就看哪个数（2026-09-20 验收反馈：目标值要显眼、配合图像）
         self.readoutBar = QtWidgets.QFrame()
         self.readoutLayout = QtWidgets.QHBoxLayout(self.readoutBar)
         self.readoutLabels = {}
-        for key, name in (('target', '目标'), ('velocity', '速度'),
-                          ('angle', '角度')):
+        self.readoutCaptions = {}
+        readoutStyle = {
+            'target': ('目标', 'color:#e53935;'),
+            'velocity': ('速度 (rad/s)', 'color:#fb8c00;'),
+            'angle': ('角度 (rad)', 'color:#43a047;'),
+        }
+        for key, (name, color) in readoutStyle.items():
             caption = QtWidgets.QLabel(name)
             value = QtWidgets.QLabel('—')
             font = value.font()
-            font.setPointSize(16)
+            font.setPointSize(20)
             font.setBold(True)
             value.setFont(font)
-            value.setMinimumWidth(110)
+            value.setStyleSheet(color)
+            value.setMinimumWidth(130)
+            self.readoutCaptions[key] = caption
             self.readoutLabels[key] = value
             self.readoutLayout.addWidget(caption)
             self.readoutLayout.addWidget(value)
@@ -258,6 +278,7 @@ class TuningBenchWidget(WorkAreaTabWidget):
         for cardKey, card in self.pidCards.items():
             card.setVisible(cardKey in cfg['cards'])
         self.unitLabel.setText(cfg['unit'])
+        self.readoutCaptions['target'].setText('目标 (%s)' % cfg['unit'])
         self.targetInput.setText(str(cfg['default']))
         self._updateTargetGuard()
         # ⑦ 未开流则自动开流（开流动作会再发一遍 MMD+MMS，幂等）
@@ -306,9 +327,13 @@ class TuningBenchWidget(WorkAreaTabWidget):
     # ── 读数 / 连接状态 ────────────────────────────────────
     def refreshReadouts(self):
         d_ = self.device
-        self.readoutLabels['target'].setText('%.3f' % float(d_.targetNow or 0))
+        cfg = self.LOOPS.get(self.activeLoop)
+        unit = cfg['unit'] if cfg else '—'
+        target = float(d_.targetNow or 0)
+        self.readoutLabels['target'].setText('%.3f' % target)
         self.readoutLabels['velocity'].setText('%.3f' % float(d_.velocityNow or 0))
         self.readoutLabels['angle'].setText('%.3f' % float(d_.angleNow or 0))
+        self.currentTargetLabel.setText('%.3f %s' % (target, unit))
 
     def connectionStateChanged(self, isConnected):
         trace('[TUNE] connectionStateChanged connected=%r', isConnected)
