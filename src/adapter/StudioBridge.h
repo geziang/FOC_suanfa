@@ -101,6 +101,8 @@ private:
   uint32_t lastSnapMs_ = 0;
   uint32_t lastUpdateHeartbeatMs_ = 0;
   uint32_t updateCount_ = 0;
+  /// 曲线流限速闸（2026-09-20）：两次 monitor() 放行的最小间隔
+  uint32_t lastMonitorGateMs_ = 0;
 };
 
 } // namespace fockit

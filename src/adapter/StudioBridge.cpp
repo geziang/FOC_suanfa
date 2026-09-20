@@ -23,7 +23,15 @@ void StudioBridge::update() {
   if (trace_ && serialPending) dbgPort_->println(F("[FW STUDIO] cmd.run enter"));
   cmd_.run();
   if (trace_ && serialPending) dbgPort_->println(F("[FW STUDIO] cmd.run returned"));
-  motor_->rawMotor().monitor();
+  // 曲线流限速闸（2026-09-20）：两次 monitor() 放行最小间隔 10ms → 硬上限 ~100 行/秒。
+  // 主循环可达 ~15kHz，仅靠 Studio 的降采样参数挡不住激进配置（100 时需求 ~150 行/s，
+  // 贴着 115200 天花板）；TX 通道打满时 HardwareSerial 会阻塞调用线程（即 FOC 主循环）。
+  // 闸门保证无论界面怎么配，曲线流都不会压住主循环与心跳/应答。
+  uint32_t nowMs = millis();
+  if (nowMs - lastMonitorGateMs_ >= 10) {
+    lastMonitorGateMs_ = nowMs;
+    motor_->rawMotor().monitor();
+  }
   if (trace_ && dbgPort_) {
     uint32_t now = millis();
     if (now - lastUpdateHeartbeatMs_ >= 1000) {

@@ -220,6 +220,19 @@ FOC_TRACE_VERBOSE=1 python simpleFOCStudio.py
 - 串口独占：连接前关闭 Arduino IDE 串口监视器及其他占用程序；
 - 同一时刻只连一个上位机/终端。
 
+### 5.5 SimpleFOC 2.2.1 本地补丁与固件硬化（2026-09-20，"绘曲线即死"根治）
+
+**现象**：绘图勾选 Cq/Cd（曲线变量含电流位）后固件瞬间全哑——无心跳、无应答、曲线残行断在第 3 列（Vd 之后，恰是 `monitor()` 内调 `getFOCCurrents()` 之前），复位后复现。降采样 100/1000 无差别 → 与串口流量无关（实证排除带宽说）。
+
+**根因**：两套 ADC 驱动打架。电流采样走库自带裸寄存器驱动 `adcRead()`（`esp32_adc_driver.cpp`，把 ADC1 强占为软件控制模式），母线检测 `dengfoc_v4::readVin()` 走 arduino-esp32 2.0.4 官方驱动 `analogReadMilliVolts()`（每秒一次）。两驱动交替接管后 SAR 转换完成标志不再置位，`__adcEnd()` 的 busy-wait **死循环卡死主循环**。触发面精确闭合：电压力矩模式下 loop() 内唯一调 `adcRead()` 的路径就是 monitor() 的电流列（setup 阶段采样对齐时驱动刚独占初始化，故初始化不受影响）。上游 2.3.x 重写 ESP32 电流采样驱动即为此因。
+
+**修复**（两层，均已落地）：
+
+1. **本地补丁（已安装库，不在 git 内）**：`Documents/Arduino/libraries/Simple_FOC/src/current_sense/hardware_specific/esp32_mcu.cpp` 的 `_readADCVoltageInline` 改用 `analogRead(pinA)`（同为 12bit 0..4095，尺度不变）。⚠️ **重装/升级 SimpleFOC 库会覆盖此补丁**——症状复现先查这里；长期挂账：升级 SimpleFOC 2.3.x 后撤补丁回归验证。
+2. **固件硬化（本库工程内）**：`setup()` 加 `Serial.setTxBufferSize(512)`（突发打印入环形缓冲）+ `StudioBridge::update()` 曲线流限速闸（两次 `monitor()` 最小间隔 10ms，硬上限 ~100 行/秒）——无论界面降采样配多小，TX 都打不满 115200、压不住 FOC 主循环。
+
+**排查方法论存档**：三层瓶颈分开证伪——①上位机 GUI（逐行全量重绘，已解耦限频）；②串口链路容量（降采样 1000 仍死即排除）；③固件外设状态（残行断点定位到电流读取调用处）。每层都要有"换个参数就能否决"的判据。
+
 ## 6. 纪律与边界
 
 1. **RAM 值纪律**：Studio 改动重启即失——调好必抄回代码（bsp/control 默认值）并在验收记录登记，NVS 只固化编码器标定；
