@@ -46,18 +46,27 @@ void PowerMonitor::update() {
   if (now - lastMs_ < periodMs_) return;
   lastMs_ = now;
   lastVin_ = dengfoc_v4::readVin();
-  Serial.printf("[EXP POWER] update readVin=%.4f threshold=%.4f\n",
-                (double)lastVin_, (double)underVolt_);
+  // 常态静默：周期打印收敛为应用层 1 行/秒心跳（loop() 的 [FW LOOP] alive 携带 vin/ok），
+  // 此处仅在状态翻转时打印（触发式），不再每次检测都刷两行（DD-04 §4.3 节流）。
+  // 需要逐次读数排查时调用 setPeriodicVerbose(true)（随 shell 的 dbg on 同步）。
+  if (periodicVerbose_) {
+    Serial.printf("[EXP POWER] update readVin=%.4f threshold=%.4f\n",
+                  (double)lastVin_, (double)underVolt_);
+  }
 
   if (lastVin_ < underVolt_) {
     // 连续5次复测确认，避免毛刺误触发（官方例程同款）
     uint8_t count = 5;
     while (count--) {
       float v = dengfoc_v4::readVin();
-      Serial.printf("[EXP POWER] recheck=%u vin=%.4f\n", (unsigned)(5 - count), (double)v);
+      if (periodicVerbose_) {
+        Serial.printf("[EXP POWER] recheck=%u vin=%.4f\n", (unsigned)(5 - count), (double)v);
+      }
       if (v > underVolt_) {
         lastVin_ = v;
-        Serial.println(F("[EXP POWER] update returned: transient recovery"));
+        if (periodicVerbose_) {
+          Serial.println(F("[EXP POWER] update returned: transient recovery"));
+        }
         return;
       }
     }
@@ -68,7 +77,9 @@ void PowerMonitor::update() {
     ok_ = true;
     Serial.printf("[保护] 电压恢复 %.2fV\n", lastVin_);
   }
-  Serial.printf("[EXP POWER] update returned ok=%d\n", ok_ ? 1 : 0);
+  if (periodicVerbose_) {
+    Serial.printf("[EXP POWER] update returned ok=%d\n", ok_ ? 1 : 0);
+  }
 }
 
 } // namespace fockit

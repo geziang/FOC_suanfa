@@ -20,6 +20,12 @@ public:
   ///   power.update(); if (!power.ok()) motor.disable();
   void update();
 
+  /// 周期探针开关（默认关）：开时每个检测周期打印 readVin/threshold/ok 两行详细日志。
+  /// 由 `dbg on`（SerialShell 的 verbose 钩子）打开，仅用于排查；
+  /// 稳态保持静默 —— 周期打印收敛为应用层 1 Hz 心跳一行（DD-04 §4.3 节流）。
+  void setPeriodicVerbose(bool on) { periodicVerbose_ = on; }
+  bool periodicVerbose() const { return periodicVerbose_; }
+
   float voltage() const { return lastVin_; }
   bool ok() const { return ok_; }
 
@@ -29,6 +35,7 @@ private:
   uint32_t lastMs_ = 0;
   float lastVin_ = 0.0f;
   bool ok_ = true;
+  bool periodicVerbose_ = false;
 };
 
 } // namespace fockit

@@ -17,12 +17,7 @@ void SerialShell::update() {
   // Studio 会话期：串口处理权让位给会话桥（Commander 独占解析）
   if (studioMode_) {
     if (studio_ != nullptr) {
-      studio_->update();
-      uint32_t now = millis();
-      if (now - lastStudioHeartbeatMs_ >= 1000) {
-        lastStudioHeartbeatMs_ = now;
-        port_->println(F("[FW SHELL] studio update returned"));
-      }
+      studio_->update();  // 存活心跳由应用层 1 行/秒的 [FW LOOP] alive 承担，此处不再刷行
     } else {
       port_->println(F("[FW SHELL] studio mode set but bridge is null"));
     }
@@ -115,7 +110,6 @@ void SerialShell::dispatch_() {
     if (studio_ != nullptr) {
       streaming_ = false;
       studioMode_ = true;
-      lastStudioHeartbeatMs_ = millis();
       port_->println(F("进入 SimpleFOC Studio 会话（独占串口），可在上位机连接 115200"));
       port_->println(F("退出：按板上 EN/RST 复位；调好的增益请抄回代码（Studio 改动不落 NVS）"));
       port_->println(F("[FW SHELL] studio mode enabled; waiting for Commander M..."));
@@ -130,6 +124,9 @@ void SerialShell::dispatch_() {
     } else {
       port_->println(F("未挂载上位机会话（attachStudio 为空）"));
     }
+    if (verboseCb_ != nullptr) verboseCb_(on);  // 同步固件周期探针（如 PowerMonitor）
+    port_->println(on ? F("详细日志已开（周期探针 1s 逐条输出）")
+                      : F("详细日志已关（常态仅 1 行/秒心跳）"));
   } else if (!strcmp(cmd, "sel") && argc >= 2 && mgr_ != nullptr) {
     IMotor* m = mgr_->select(atoi(argv[1]));
     if (m != nullptr) {
@@ -166,7 +163,7 @@ void SerialShell::printHelp_() {
   port_->println(F("  st              打印一次状态"));
   port_->println(F("  stream          开关 10Hz 状态流"));
   port_->println(F("  save            固化标定到 NVS"));
-  port_->println(F("  dbg on|off      Studio 调试探针（进 studio 前设置；按钮确认默认常开）"));
+  port_->println(F("  dbg on|off      详细日志开关（Studio 探针 + 固件周期探针）；默认关，常态仅 1 行/秒心跳"));
   port_->println(F("  studio          进入 SimpleFOC Studio 上位机会话（退出按复位）"));
   port_->println(F("  sel <0|1>       切换受控电机（需绑定 MotorManager）"));
 }

@@ -38,7 +38,9 @@
 //                 → 目标滑杆小幅阶跃(≤0.15A，持续红线 0.5A) → MQP/MQI 在计算值附近微调
 //   step on|off / step amp <x> / step period <ms>   自动方波激励（幅值单位随当前会话）
 //   gains         重打印计算增益；t/v/p <目标> 直接给目标；stream 开 10Hz 状态流
-//   dbg on|off    Studio 探针：按钮设置确认默认常开；on 追加逐条命令回显 + 1s 状态快照
+//   dbg on|off    详细日志开关（默认关）：on 追加 Studio 逐条命令回显 + 1s 状态快照，
+//                 并打开固件周期探针（PowerMonitor 逐次读数）。常态串口只有 1 行/秒心跳：
+//                 [FW LOOP] alive vin=..V ok=.. mode=.. tgt=..
 //   studio        进 SimpleFOC Studio 上位机会话（退出按板上 EN/RST 复位）
 //
 // 上位机连接时序（顺序反了会 Write timeout / 参数全零 / 按钮无响应）：
@@ -172,6 +174,12 @@ bool tuningCommands(int argc, char* argv[]) {
   return false;
 }
 
+// ========== 详细日志开关（shell 的 dbg on|off 联动） ==========
+// 常态节流：串口只有 loop() 里 1 行/秒的心跳；逐次周期探针按需打开（DD-04 §4.3）。
+void applyVerbose(bool on) {
+  power.setPeriodicVerbose(on);
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println(F("[FW BOOT] Serial.begin done"));
@@ -206,7 +214,10 @@ void setup() {
   Serial.println(F("[FW BOOT] shell.attachStudio done"));
   shell.attachUserCommand(tuningCommands);
   Serial.println(F("[FW BOOT] shell.attachUserCommand done"));
-  Serial.println(F("三环整定主程序就绪。命令：loop t|v|p|i / step on|off|amp|period / gains / t|v|p / stream / studio（help 查全部）"));
+  shell.attachVerboseHook(applyVerbose);  // dbg on|off 同步固件周期探针
+  Serial.println(F("[FW BOOT] shell.attachVerboseHook done"));
+  Serial.println(F("三环整定主程序就绪。命令：loop t|v|p|i / step on|off|amp|period / gains / t|v|p / stream / dbg on|off / studio（help 查全部）"));
+  Serial.println(F("[FW BOOT] 常态串口仅 1 行/秒心跳；详细逐次探针用 dbg on 打开"));
   Serial.println(F("[FW BOOT] setup complete"));
 }
 
@@ -233,8 +244,13 @@ void loop() {
   motor.update();
   shell.update();  // studio 会话期自动转为上位机通道，step 激励照常运行
   uint32_t now = millis();
+  // 稳态唯一周期行：1 行/秒（节流见 DD-04 §4.3）。母线电压/欠压状态/当前模式/目标
+  // 一并承载，替代原先分散在 .ino 与 PowerMonitor 里的每秒 3 行。
+  // 前缀 '[' 且不含 PID/Motion/Status 等英文标记，SimpleFOC Studio 解析器会忽略，不污染通道。
   if (now - lastLoopLogMs >= 1000) {
     lastLoopLogMs = now;
-    Serial.println(F("[FW LOOP] alive"));
+    Serial.printf("[FW LOOP] alive vin=%.2fV ok=%d mode=%s tgt=%.3f\n",
+                  (double)power.voltage(), power.ok() ? 1 : 0,
+                  controlModeName(motor.getState().mode), (double)motor.getTarget());
   }
 }

@@ -22,6 +22,9 @@ public:
   /// 注册用户自定义命令：未识别命令以已解析的 argc/argv 转发，
   /// 返回 true 表示已处理（整定程序等示例专用，命令集由示例自定义）
   void attachUserCommand(bool (*cb)(int argc, char* argv[])) { userCb_ = cb; }
+  /// 详细日志钩子：`dbg on|off` 时同步通知固件其它模块（如 PowerMonitor 周期探针）。
+  /// hmi 层不依赖 bsp —— 由应用层接线（示例把钩子指向 power.setPeriodicVerbose）
+  void attachVerboseHook(void (*cb)(bool)) { verboseCb_ = cb; }
 
   void update();
 
@@ -38,12 +41,12 @@ private:
   ISerialSession* studio_ = nullptr;
   bool studioMode_ = false;
   bool (*userCb_)(int argc, char* argv[]) = nullptr;
+  void (*verboseCb_)(bool) = nullptr;
 
   char buf_[48] = {0};
   int len_ = 0;
   bool streaming_ = false;
   uint32_t lastStreamMs_ = 0;
-  uint32_t lastStudioHeartbeatMs_ = 0;
 };
 
 } // namespace fockit
