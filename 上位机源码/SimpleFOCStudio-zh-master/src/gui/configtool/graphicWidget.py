@@ -33,6 +33,9 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
     PLOT_FRAME_MS = 50     # 重绘帧周期：50ms=20Hz。勿再调小，见类 docstring
     PENDING_MAXLEN = 2048  # 串口行积压上限：GUI 偶发停顿时丢旧保新，内存有界
 
+    MEASURE_SECONDS = 2.0  # 阶跃判据测量窗时长（按实测流率换算点数）
+    MEASURE_BAND = 0.02    # 建立时间误差带：±2%（相对步幅）
+
     
     signals = ['Target', 'Vq','Vd','Cq','Cd','Vel','Angle']
     signal_tooltip = ['目标', '电压 Q [V]','电压 D [V]','电流 Q [mA]','电流 D [mA]','速度 [rad/sec]','角度 [rad]']
@@ -108,6 +111,28 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
         self.viewXFactor = 1.0
         self.viewYFactor = 1.0
 
+        # ── 秒轴（2026-09-21）：实测流率自动校准点间隔 ──
+        # 每条曲线行到达时记录时间戳（滚动窗），点间隔 = 窗内跨度/点数；
+        # 降采样/主循环变化会在 ~2 秒内自动重校准；流中断 >0.5s 清空重校。
+        self.arrivalTimes = collections.deque(maxlen=256)
+        self.sampleInterval = None   # [s/点]；None=未校准（X 轴暂以点序号显示）
+        self._xLabelMode = None
+
+        # ── 阶跃判据测量（tr/σ%/ts/ess，2026-09-21）：整定台阶跃按钮触发 ──
+        self.measure = None          # 进行中的测量窗（None=空闲）
+        self.lastMetrics = None
+        self.prevMetrics = None
+        self._measureSeq = 0
+        # 标注线（Y 值锚定，不随数据滚动失效）：目标 + ±band 误差带
+        bandPen = pg.mkPen((110, 110, 110, 190), style=QtCore.Qt.DashLine)
+        targetPen = pg.mkPen((200, 40, 40, 200), style=QtCore.Qt.DashLine)
+        self.targetLine = pg.InfiniteLine(angle=0, pen=targetPen)
+        self.bandHiLine = pg.InfiniteLine(angle=0, pen=bandPen)
+        self.bandLoLine = pg.InfiniteLine(angle=0, pen=bandPen)
+        for line in (self.targetLine, self.bandHiLine, self.bandLoLine):
+            line.hide()
+            self.plotWidget.addItem(line)
+
         self.currentStatus = self.disconnectedState
         self.controlPlotWidget.pauseContinueButton.setDisabled(True)
 
@@ -168,13 +193,34 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
             self.droppedRows += 1  # 半行/列数与勾选数不符：整行丢弃
             trace_verbose('[PLOT] row dropped (total=%d)', self.droppedRows)
             return
-        self.pendingSamples.append(tuple(float(v) for v in signals))
+        row = tuple(float(v) for v in signals)
+        self.pendingSamples.append(row)
+
+        # 秒轴校准：记录到达时刻；流中断/重启（间隙>0.5s）清空重校
+        now = time.monotonic()
+        if self.arrivalTimes and now - self.arrivalTimes[-1] > 0.5:
+            self.arrivalTimes.clear()
+        self.arrivalTimes.append(now)
+
+        # 判据测量窗：采集响应通道列，满窗自动结算
+        if self.measure is not None:
+            self.measure['buf'].append(row[self.measure['col']])
+            if len(self.measure['buf']) >= self._measureWindow():
+                self._finalizeMeasure()
 
     def drainAndRedraw(self):
         """QTimer 帧回调：积压批量搬入显示数组（每帧一次移位），统一重绘一次。
 
         暂停态照常填充数组（可暂停后导出整段），只是不重绘。
         """
+        # 秒轴校准（EMA 平滑，滚动窗内自适应降采样/主循环变化）——
+        # 放在积压早退之前：无新数据帧也要持续校准
+        if len(self.arrivalTimes) >= 10:
+            span = self.arrivalTimes[-1] - self.arrivalTimes[0]
+            if span > 0:
+                fresh = span / (len(self.arrivalTimes) - 1)
+                self.sampleInterval = fresh if self.sampleInterval is None \
+                    else 0.7 * self.sampleInterval + 0.3 * fresh
         k = len(self.pendingSamples)
         if k == 0:
             return
@@ -202,14 +248,16 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
             None, '导出曲线缓冲 CSV', defaultName, 'CSV files (*.csv)')
         if not path:
             return
-        headers = ['sample'] + [self.signals[i] for i in enabled]
+        headers = ['sample', 'time_s'] + [self.signals[i] for i in enabled]
         columns = [self.signalDataArrays[i] for i in enabled]
         with open(path, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
             writer.writerow(headers)
             for r in range(self.numberOfSamples):
-                writer.writerow(
-                    [r - self.numberOfSamples] + [float(c[r]) for c in columns])
+                ts = ((r - self.numberOfSamples) * self.sampleInterval
+                      if self.sampleInterval else '')
+                writer.writerow([r - self.numberOfSamples, ts] +
+                                [float(c[r]) for c in columns])
         trace('[PLOT] CSV exported path=%r points=%d vars=%d dropped=%d',
               path, self.numberOfSamples, len(enabled), self.droppedRows)
         QtWidgets.QMessageBox.information(
@@ -240,16 +288,93 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
             # 回归自动的轴立即拟合一次：静态数据下 setData 不会触发重算
             vb.autoRange()
 
+    # ── 阶跃判据测量（tr/σ%/ts/ess，2026-09-21）─────────────
+    def beginStepMeasure(self, yRef, channel):
+        """整定台阶跃按钮触发：开始一次阶跃响应判据测量窗。
+
+        yRef 为**曲线坐标**的目标值（调用方注意通道单位，如 Cq/Cd 是 mA）。
+        响应通道必须已勾选（未勾选则放弃测量并记日志）。
+        """
+        enabled = [int(i) for i in self._enabledIndices]
+        if channel not in enabled:
+            trace('[PLOT] step measure skipped: channel %d not plotted', channel)
+            self.measure = None
+            return
+        if self.measure is not None:
+            self._finalizeMeasure()  # 上一次未满窗，先用手头数据出结果
+        self.measure = {
+            'y_ref': float(yRef), 'ch': int(channel),
+            'col': enabled.index(channel),
+            'y0': float(self.signalDataArrays[channel][-1]),
+            'buf': []}
+        trace('[PLOT] step measure begin y_ref=%r ch=%d', yRef, channel)
+
+    def _measureWindow(self):
+        """测量窗点数：MEASURE_SECONDS 按实测点间隔换算，未校准用保守 300 点。"""
+        if self.sampleInterval and self.sampleInterval > 0:
+            return int(max(50, min(self.MEASURE_SECONDS / self.sampleInterval,
+                                   600)))
+        return 300
+
+    def _finalizeMeasure(self):
+        """结算测量窗：归一化 p=(y-y0)/步幅 → tr(10%→90%) / σ% / ts(±band) / ess。"""
+        m, self.measure = self.measure, None
+        self._measureSeq += 1
+        result = {'id': self._measureSeq, 'valid': False, 'tr': None,
+                  'sigma': None, 'ts': None, 'ess': None}
+        self.prevMetrics, self.lastMetrics = self.lastMetrics, result
+        if m is None:
+            return
+        y = np.array(m['buf'], dtype=float)
+        y0, yr = m['y0'], m['y_ref']
+        step = yr - y0
+        if len(y) < 10 or abs(step) < 1e-9:
+            trace('[PLOT] step metrics invalid (n=%d step=%.4g)', len(y), step)
+            return
+        dt = self.sampleInterval
+        p = (y - y0) / step                     # 归一化：1.0 = 到达目标
+        band = self.MEASURE_BAND
+        hit10 = np.where(p >= 0.1)[0]
+        hit90 = np.where(p >= 0.9)[0]
+        outside = np.where(np.abs(p - 1.0) > band)[0]
+        tail = y[int(len(y) * 0.8):]
+        result.update(
+            valid=True,
+            tr=(float(hit90[0] - hit10[0]) * dt)
+                if (len(hit10) and len(hit90) and dt) else None,
+            sigma=max(float(p.max()) - 1.0, 0.0) * 100.0,
+            ts=(float(outside[-1] + 1) * dt) if dt else None,
+            ess=float(np.mean(tail)) - yr)
+        # 标注线（Y 值锚定，不随数据滚动失效）：目标 + ±band 误差带
+        stepAbs = abs(step)
+        self.targetLine.setPos(yr)
+        self.bandHiLine.setPos(yr + band * stepAbs)
+        self.bandLoLine.setPos(yr - band * stepAbs)
+        for line in (self.targetLine, self.bandHiLine, self.bandLoLine):
+            line.show()
+        trace('[PLOT] step metrics %r', result)
+
     def updatePlot(self):
         trace_verbose('[PLOT] updatePlot enter enabled=%r', self.signalPlotFlags)
+        # X 坐标：已校准 → 秒（timeArray×间隔），未校准 → 点序号
+        interval = self.sampleInterval
+        xs = self.timeArray if interval is None else self.timeArray * interval
+        mode = 's' if interval is not None else 'pts'
+        if mode != self._xLabelMode:
+            self._xLabelMode = mode
+            if interval is not None:
+                self.plotWidget.setLabel('bottom', '时间', units='s')
+            else:
+                self.plotWidget.setLabel('bottom', '样本点')
         for i, plotFlag in enumerate(self.signalPlotFlags):
             if plotFlag:
-                self.signalPlots[i].setData(self.timeArray, self.signalDataArrays[i])
+                self.signalPlots[i].setData(xs, self.signalDataArrays[i])
         # 视图缩放：仅对系数≠1 的轴套用（=1 轴维持自动范围，原行为不变）
         if self.viewXFactor != 1.0 or self.viewYFactor != 1.0:
+            dt = interval if interval is not None else 1.0
             visible = max(10, int(self.numberOfSamples / self.viewXFactor))
             if self.viewXFactor != 1.0:
-                self.plotWidget.setXRange(-visible, 0, padding=0)
+                self.plotWidget.setXRange(-visible * dt, 0, padding=0)
             if self.viewYFactor != 1.0:
                 enabled = [int(i) for i in self._enabledIndices]
                 if enabled:

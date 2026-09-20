@@ -95,20 +95,20 @@ class TuningBenchWidget(WorkAreaTabWidget):
     """三环整定台：连接条 + 环预设 + 大波形 + 参数卡 + 目标阶跃 + 大字号读数。"""
 
     # 环预设表：力矩类型/控制模式/曲线变量勾选（顺序 Target,Vq,Vd,Cq,Cd,Vel,Angle）
-    # /降采样/目标单位/默认幅值/0.5A 红线（仅电流环）
+    # /降采样/目标单位/默认幅值/0.5A 红线（仅电流环）/判据测量响应通道（列序同上）
     LOOPS = {
         'current': dict(title='电流环', torque=2, motion=0,
                         vars=[True, False, False, True, True, False, False],
                         downsample=100, unit='A', default=0.15, redline=0.5,
-                        cards=('currentQ', 'currentD')),
+                        cards=('currentQ', 'currentD'), response=3),
         'velocity': dict(title='速度环', torque=0, motion=1,
                          vars=[True, True, False, False, False, True, False],
                          downsample=100, unit='rad/s', default=3.0, redline=None,
-                         cards=('velocity',)),
+                         cards=('velocity',), response=5),
         'position': dict(title='位置环', torque=0, motion=2,
                          vars=[True, False, False, False, False, True, True],
                          downsample=100, unit='rad', default=1.5708, redline=None,
-                         cards=('position',)),
+                         cards=('position',), response=6),
     }
 
     def __init__(self, parent=None):
@@ -237,6 +237,19 @@ class TuningBenchWidget(WorkAreaTabWidget):
             self.readoutLayout.addWidget(caption)
             self.readoutLayout.addWidget(value)
         self.readoutLayout.addStretch(1)
+        # 判据行（阶跃测量自动结算：tr/σ%/ts/ess，本次 vs 上次两轮复现对比）
+        self.metricsCaption = QtWidgets.QLabel('判据')
+        self.metricsNow = QtWidgets.QLabel('（点 ▶±幅值 后自动测量）')
+        metricsFont = self.metricsNow.font()
+        metricsFont.setBold(True)
+        self.metricsNow.setFont(metricsFont)
+        self.metricsNow.setStyleSheet('color:#1565c0;')
+        self.metricsPrev = QtWidgets.QLabel('')
+        self.metricsPrev.setStyleSheet('color:#888;')
+        self.metricsNow.setMinimumWidth(420)
+        self.readoutLayout.addWidget(self.metricsCaption)
+        self.readoutLayout.addWidget(self.metricsNow)
+        self.readoutLayout.addWidget(self.metricsPrev)
         self.verticalLayout.addWidget(self.readoutBar)
 
         self.readoutTimer = QtCore.QTimer(self)
@@ -309,6 +322,12 @@ class TuningBenchWidget(WorkAreaTabWidget):
             return
         trace('[TUNE] send target=%r loop=%r', value, self.activeLoop)
         self.device.sendTargetValue(value)
+        # 非零目标 = 阶跃：通知波形开启判据测量窗。
+        # Cq/Cd 曲线单位是 mA（库 monitor ×1000），目标按通道尺度换算
+        if value != 0 and self.activeLoop:
+            cfg = self.LOOPS[self.activeLoop]
+            yRef = value * 1000.0 if cfg['response'] in (3, 4) else value
+            self.graphicWidget.beginStepMeasure(yRef, cfg['response'])
 
     def _updateTargetGuard(self):
         """电流环 0.5A 持续红线提示（SPEC-T）；其余环无红线。"""
@@ -345,6 +364,41 @@ class TuningBenchWidget(WorkAreaTabWidget):
         self.readoutLabels['angle'].setText('%.3f' % float(d_.angleNow or 0))
         prefix = '当前Q轴目标：' if self.activeLoop == 'current' else '当前目标：'
         self.currentTargetLabel.setText('%s%.3f %s' % (prefix, target, unit))
+        self._renderMetrics()
+
+    def _renderMetrics(self):
+        m = self.graphicWidget.lastMetrics
+        if m is None:
+            return
+        self.metricsNow.setText(self._fmtMetrics(m))
+        p = self.graphicWidget.prevMetrics
+        if p is not None and p.get('valid'):
+            self.metricsPrev.setText('｜上次 ' + self._fmtMetrics(p))
+
+    def _fmtMetrics(self, m):
+        """tr/σ/ts 按秒自适应显示；ess 换算回当前环单位（Cq 曲线 mA → A）；
+        电流环附加带宽法速读 ω≈4/ts（一阶近似）。"""
+        if not m.get('valid'):
+            return '无效窗（点数不足/步幅为0）'
+
+        def sec(v):
+            if v is None:
+                return '—'
+            return '%.0fms' % (v * 1000) if v < 1.0 else '%.2fs' % v
+
+        ess = m['ess']
+        if ess is None:
+            essTxt = '—'
+        elif self.activeLoop == 'current':
+            essTxt = '%.4f A' % (ess / 1000.0)
+        else:
+            essTxt = '%.4f' % ess
+        sigma = '—' if m['sigma'] is None else '%.1f%%' % m['sigma']
+        text = 'tr %s · σ %s · ts %s · ess %s' % (
+            sec(m['tr']), sigma, sec(m['ts']), essTxt)
+        if self.activeLoop == 'current' and m['ts'] and m['ts'] > 0:
+            text += ' · ω≈%.0f rad/s' % (4.0 / m['ts'])
+        return text
 
     def connectionStateChanged(self, isConnected):
         trace('[TUNE] connectionStateChanged connected=%r', isConnected)
