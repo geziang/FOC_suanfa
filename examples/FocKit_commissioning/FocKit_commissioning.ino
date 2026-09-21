@@ -93,7 +93,7 @@ void computeGains() {
   kpV = WV * J_EST / KT_M;         // 0.0025 [A/(rad/s)] 级联版：踩冻结电流环，R 已除
   kiV = 10.0f * kpV;               // 0.0254  N=10（ζ=0.707；2026-09-21 定档，低速边界 5~10 见 T-P1-6）
   kpP = WP;                          // 4     [1/s]
-  Serial.printf("[整定] 参数: R=%.2fΩ L=%.2fmH KT=%.4f J=%.2e kg·m²(③反推,P3收口)\n",
+  Serial.printf("[整定] 参数: R=%.2fΩ L=%.2fmH KT=%.4f J=%.2e kg·m²(②实测,随KT定标)\n",
                 (double)R_PH, (double)(L_PH * 1000.0f), (double)KT_M, (double)J_EST);
   Serial.printf("[整定] 带宽: ωc=%.0f ωv=%.0f ωp=%.0f rad/s\n",
                 (double)WC, (double)WV, (double)WP);

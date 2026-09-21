@@ -105,7 +105,7 @@ class TuningBenchWidget(WorkAreaTabWidget):
                          vars=[True, True, False, False, False, True, False],
                          downsample=100, unit='rad/s', default=3.0, redline=None,
                          cards=('velocity',), response=5),
-        'position': dict(title='位置环', torque=0, motion=2,
+        'position': dict(title='位置环', torque=2, motion=2,   # 级联版(2026-09-21)：MT2+MC2，踩冻结速度环
                          vars=[True, False, False, False, False, True, True],
                          downsample=100, unit='rad', default=1.5708, redline=None,
                          cards=('position',), response=6),
