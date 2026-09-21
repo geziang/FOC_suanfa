@@ -1,0 +1,695 @@
+[VEL DBG] ctrl=1 tt=2 sv=41.430 ang=4.702 rot=1764 vq=1.412 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=41.017 ang=5.765 rot=1767 vq=1.512 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.17V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=38.722 ang=0.620 rot=1771 vq=1.454 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.454
+[VEL DBG] ctrl=1 tt=2 sv=41.952 ang=1.832 rot=1774 vq=1.475 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -0.954
+Monitor | Cq: 0.019
+[FW LOOP] alive vin=12.21V ok=1 mode=velocity tgt=0.000
+Monitor | Cd: 0.002
+Monitor | vel: 38.110
+Monitor | angle: 11165.912
+[VEL DBG] ctrl=1 tt=2 sv=39.109 ang=2.965 rot=1777 vq=1.479 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=39.487 ang=4.065 rot=1780 vq=1.413 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=41.205 ang=5.232 rot=1783 vq=1.491 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.507
+Monitor | Vd: -0.853
+Monitor | Cq: 0.007
+Monitor | Cd: -0.011
+[VEL DBG] ctrl=1 tt=2 sv=39.562 ang=0.078 rot=1787 vq=1.475 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 39.235
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+Monitor | angle: 11236.104
+[VEL DBG] ctrl=1 tt=2 sv=40.222 ang=1.195 rot=1790 vq=1.407 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=39.648 ang=2.418 rot=1793 vq=1.505 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+Monitor | Vq: 1.462
+[VEL DBG] ctrl=1 tt=2 sv=38.757 ang=3.499 rot=1796 vq=1.495 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -0.936
+Monitor | Cq: 0.037
+Monitor | Cd: 0.004
+Monitor | vel: 40.638
+Monitor | angle: 11307.157
+[VEL DBG] ctrl=1 tt=2 sv=41.841 ang=4.723 rot=1799 vq=1.429 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.21V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.242 ang=5.867 rot=1802 vq=1.526 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=39.033 ang=0.690 rot=1806 vq=1.432 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+Monitor | Vq: 1.535
+Monitor | Vd: -0.991
+Monitor | Cq: 0.005
+[VEL DBG] ctrl=1 tt=2 sv=41.456 ang=1.870 rot=1809 vq=1.463 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cd: -0.007
+Monitor | vel: 40.436
+Monitor | angle: 11378.302
+[VEL DBG] ctrl=1 tt=2 sv=38.870 ang=3.004 rot=1812 vq=1.507 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=40.682 ang=4.152 rot=1815 vq=1.506 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.396
+[VEL DBG] ctrl=1 tt=2 sv=39.020 ang=5.243 rot=1818 vq=1.515 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -0.713
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+Monitor | Cq: 0.033
+Monitor | Cd: -0.013
+Monitor | vel: 39.746
+[VEL DBG] ctrl=1 tt=2 sv=38.593 ang=0.204 rot=1822 vq=1.416 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | angle: 11448.987
+[VEL DBG] ctrl=1 tt=2 sv=40.153 ang=1.447 rot=1825 vq=1.402 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.940 ang=2.542 rot=1828 vq=1.497 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.497
+Monitor | Vd: -1.006
+Monitor | Cq: 0.012
+[VEL DBG] ctrl=1 tt=2 sv=39.060 ang=3.622 rot=1831 vq=1.470 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cd: 0.004
+Monitor | vel: 41.481
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | angle: 11519.621
+[VEL DBG] ctrl=1 tt=2 sv=42.172 ang=4.887 rot=1834 vq=1.488 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=39.584 ang=6.012 rot=1837 vq=1.559 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.15V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=40.402 ang=0.870 rot=1841 vq=1.432 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.319
+Monitor | Vd: -0.828
+Monitor | Cq: 0.028
+Monitor | Cd: -0.002
+Monitor | vel: 38.833
+[VEL DBG] ctrl=1 tt=2 sv=40.847 ang=1.973 rot=1844 vq=1.435 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | angle: 11590.379
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=38.963 ang=3.166 rot=1847 vq=1.527 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=40.306 ang=4.303 rot=1850 vq=1.447 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | Vq: 1.530
+Monitor | Vd: -0.981
+[VEL DBG] ctrl=1 tt=2 sv=41.798 ang=5.389 rot=1853 vq=1.523 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.013
+Monitor | Cd: 0.013
+Monitor | vel: 41.144
+Monitor | angle: 11661.497
+[VEL DBG] ctrl=1 tt=2 sv=38.108 ang=0.249 rot=1857 vq=1.433 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.17V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=41.348 ang=1.445 rot=1860 vq=1.468 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=39.884 ang=2.586 rot=1863 vq=1.527 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.523
+Monitor | Vd: -0.826
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | Cq: 0.008
+Monitor | Cd: -0.009
+[VEL DBG] ctrl=1 tt=2 sv=38.649 ang=3.694 rot=1866 vq=1.411 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 39.210
+Monitor | angle: 11733.114
+[VEL DBG] ctrl=1 tt=2 sv=41.579 ang=4.814 rot=1869 vq=1.495 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=38.620 ang=6.073 rot=1872 vq=1.480 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.479
+Monitor | Vd: -0.863
+[VEL DBG] ctrl=1 tt=2 sv=40.474 ang=0.973 rot=1876 vq=1.416 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.023
+Monitor | Cd: -0.008
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+Monitor | vel: 38.862
+Monitor | angle: 11804.173
+[VEL DBG] ctrl=1 tt=2 sv=40.479 ang=2.166 rot=1879 vq=1.456 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=39.114 ang=3.195 rot=1882 vq=1.531 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=41.109 ang=4.387 rot=1885 vq=1.489 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.474
+Monitor | Vd: -0.912
+Monitor | Cq: 0.008
+Monitor | Cd: 0.024
+[VEL DBG] ctrl=1 tt=2 sv=41.000 ang=5.384 rot=1888 vq=1.483 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 42.267
+Monitor | angle: 11875.162
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=38.757 ang=0.310 rot=1892 vq=1.466 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=40.701 ang=1.479 rot=1895 vq=1.462 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+Monitor | Vq: 1.441
+[VEL DBG] ctrl=1 tt=2 sv=39.871 ang=2.686 rot=1898 vq=1.479 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -0.745
+Monitor | Cq: 0.030
+Monitor | Cd: -0.025
+Monitor | vel: 38.397
+Monitor | angle: 11945.505
+[VEL DBG] ctrl=1 tt=2 sv=40.275 ang=3.749 rot=1901 vq=1.473 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=41.842 ang=4.992 rot=1904 vq=1.483 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=38.877 ang=6.251 rot=1907 vq=1.483 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.468
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+Monitor | Vd: -0.996
+Monitor | Cq: 0.033
+Monitor | Cd: 0.003
+[VEL DBG] ctrl=1 tt=2 sv=39.880 ang=1.014 rot=1911 vq=1.407 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 40.862
+Monitor | angle: 12016.867
+[VEL DBG] ctrl=1 tt=2 sv=40.084 ang=2.129 rot=1914 vq=1.445 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.21V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.115 ang=3.237 rot=1917 vq=1.573 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.533
+[VEL DBG] ctrl=1 tt=2 sv=41.440 ang=4.468 rot=1920 vq=1.472 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -0.946
+Monitor | Cq: 0.005
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+Monitor | Cd: 0.017
+Monitor | vel: 40.033
+Monitor | angle: 12087.856
+[VEL DBG] ctrl=1 tt=2 sv=39.695 ang=5.625 rot=1923 vq=1.436 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=39.225 ang=0.445 rot=1927 vq=1.459 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=42.023 ang=1.697 rot=1930 vq=1.502 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.413
+Monitor | Vd: -0.709
+Monitor | Cq: 0.016
+[VEL DBG] ctrl=1 tt=2 sv=39.204 ang=2.758 rot=1933 vq=1.461 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cd: -0.002
+Monitor | vel: 38.923
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | angle: 12159.162
+[VEL DBG] ctrl=1 tt=2 sv=40.115 ang=4.004 rot=1936 vq=1.420 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=40.442 ang=5.091 rot=1939 vq=1.455 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=38.448 ang=6.276 rot=1942 vq=1.460 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.448
+Monitor | Vd: -0.952
+Monitor | Cq: 0.013
+Monitor | Cd: 0.004
+Monitor | vel: 41.751
+[VEL DBG] ctrl=1 tt=2 sv=39.506 ang=1.108 rot=1946 vq=1.405 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | angle: 12230.032
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.821 ang=2.293 rot=1949 vq=1.488 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=38.282 ang=3.335 rot=1952 vq=1.493 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[FW LOOP] alive vin=12.17V ok=1 mode=velocity tgt=0.000
+Monitor | Vq: 1.479
+Monitor | Vd: -0.831
+[VEL DBG] ctrl=1 tt=2 sv=41.041 ang=4.488 rot=1955 vq=1.417 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.018
+Monitor | Cd: -0.004
+Monitor | vel: 42.499
+Monitor | angle: 12301.470
+[VEL DBG] ctrl=1 tt=2 sv=39.292 ang=5.789 rot=1958 vq=1.472 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.241 ang=0.568 rot=1962 vq=1.474 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=41.245 ang=1.654 rot=1965 vq=1.510 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.549
+Monitor | Vd: -0.924
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+Monitor | Cq: 0.017
+Monitor | Cd: 0.001
+Monitor | vel: 40.482
+[VEL DBG] ctrl=1 tt=2 sv=39.357 ang=2.853 rot=1968 vq=1.465 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | angle: 12371.911
+[VEL DBG] ctrl=1 tt=2 sv=39.009 ang=4.007 rot=1971 vq=1.424 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.21V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=40.808 ang=5.163 rot=1974 vq=1.507 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.454
+Monitor | Vd: -0.788
+[VEL DBG] ctrl=1 tt=2 sv=38.960 ang=6.276 rot=1977 vq=1.504 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.022
+Monitor | Cd: -0.012
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | vel: 38.364
+Monitor | angle: 12442.321
+[VEL DBG] ctrl=1 tt=2 sv=40.688 ang=1.213 rot=1981 vq=1.441 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=40.160 ang=2.393 rot=1984 vq=1.474 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=39.376 ang=3.456 rot=1987 vq=1.496 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.506
+Monitor | Vd: -0.881
+Monitor | Cq: 0.015
+Monitor | Cd: 0.005
+[VEL DBG] ctrl=1 tt=2 sv=41.544 ang=4.694 rot=1990 vq=1.420 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 40.857
+Monitor | angle: 12513.362
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.834 ang=5.683 rot=1993 vq=1.499 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=39.969 ang=0.672 rot=1997 vq=1.463 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | 1110010
+[Studio] 曲线变量位图 <- 0x72
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+Monitor | Vq: 1.546
+Monitor | Vd: -0.885
+[VEL DBG] ctrl=1 tt=2 sv=40.954 ang=1.913 rot=2000 vq=1.368 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.025
+Monitor | Cd: 0.003
+Monitor | vel: 39.696
+Monitor | angle: 12583.995
+[VEL DBG] ctrl=1 tt=2 sv=40.538 ang=3.048 rot=2003 vq=1.491 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.650 ang=4.116 rot=2006 vq=1.417 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=40.291 ang=5.199 rot=2009 vq=1.469 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.467
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+Monitor | Vd: -0.996
+Monitor | Cq: 0.015
+Monitor | Cd: 0.009
+[VEL DBG] ctrl=1 tt=2 sv=38.135 ang=0.034 rot=2013 vq=1.471 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 40.672
+Monitor | angle: 12653.848
+Monitor | 1100010
+[Studio] 曲线变量位图 <- 0x62
+[VEL DBG] ctrl=1 tt=2 sv=40.721 ang=1.152 rot=2016 vq=1.409 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.891 ang=2.387 rot=2019 vq=1.494 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.468
+Monitor | Vd: -0.885
+[VEL DBG] ctrl=1 tt=2 sv=39.001 ang=3.540 rot=2022 vq=1.489 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.009
+Monitor | Cd: -0.009
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+Monitor | vel: 41.226
+Monitor | angle: 12723.162
+[VEL DBG] ctrl=1 tt=2 sv=41.434 ang=4.755 rot=2025 vq=1.437 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=40.311 ang=5.838 rot=2028 vq=1.517 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=39.568 ang=0.753 rot=2032 vq=1.464 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.506
+Monitor | Vd: -0.842
+Monitor | Cq: 0.003
+Monitor | Cd: 0.003
+[VEL DBG] ctrl=1 tt=2 sv=40.429 ang=1.888 rot=2035 vq=1.431 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 38.955
+Monitor | angle: 12794.315
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=38.689 ang=3.068 rot=2038 vq=1.498 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=41.844 ang=4.185 rot=2041 vq=1.436 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+Monitor | Vq: 1.477
+Monitor | Vd: -0.923
+[VEL DBG] ctrl=1 tt=2 sv=41.499 ang=5.309 rot=2044 vq=1.485 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.027
+Monitor | Cd: -0.002
+Monitor | vel: 40.135
+Monitor | angle: 12865.499
+[VEL DBG] ctrl=1 tt=2 sv=38.954 ang=0.150 rot=2048 vq=1.469 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=41.464 ang=1.316 rot=2051 vq=1.478 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=38.713 ang=2.471 rot=2054 vq=1.504 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.493
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+Monitor | Vd: -1.018
+Monitor | Cq: 0.025
+Monitor | Cd: 0.005
+[VEL DBG] ctrl=1 tt=2 sv=38.256 ang=3.590 rot=2057 vq=1.453 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 41.365
+Monitor | angle: 12937.257
+[VEL DBG] ctrl=1 tt=2 sv=41.030 ang=4.722 rot=2060 vq=1.411 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.705 ang=5.943 rot=2063 vq=1.512 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.443
+[VEL DBG] ctrl=1 tt=2 sv=39.373 ang=0.805 rot=2067 vq=1.448 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -0.894
+Monitor | Cq: 0.012
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | Cd: -0.007
+Monitor | vel: 39.603
+[VEL DBG] ctrl=1 tt=2 sv=41.118 ang=1.890 rot=2070 vq=1.482 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | angle: 13008.176
+[VEL DBG] ctrl=1 tt=2 sv=38.941 ang=3.066 rot=2073 vq=1.502 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=40.163 ang=4.258 rot=2076 vq=1.404 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.414
+Monitor | Vd: -0.771
+Monitor | Cq: 0.032
+[VEL DBG] ctrl=1 tt=2 sv=41.380 ang=5.582 rot=2079 vq=1.459 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cd: -0.008
+Monitor | vel: 38.756
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+Monitor | angle: 13079.382
+[VEL DBG] ctrl=1 tt=2 sv=39.338 ang=0.347 rot=2083 vq=1.470 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=40.923 ang=0.788 rot=2086 vq=1.607 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=40.408 ang=2.530 rot=2089 vq=1.526 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.480
+Monitor | Vd: -1.001
+Monitor | Cq: 0.020
+Monitor | Cd: 0.017
+Monitor | vel: 40.677
+[VEL DBG] ctrl=1 tt=2 sv=40.047 ang=3.760 rot=2092 vq=1.467 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | angle: 13150.314
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=41.372 ang=4.893 rot=2095 vq=1.411 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=38.648 ang=6.119 rot=2098 vq=1.486 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+Monitor | Vq: 1.432
+Monitor | Vd: -0.888
+[VEL DBG] ctrl=1 tt=2 sv=40.030 ang=0.945 rot=2102 vq=1.413 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.015
+Monitor | Cd: -0.004
+Monitor | vel: 38.863
+Monitor | angle: 13222.118
+[VEL DBG] ctrl=1 tt=2 sv=41.260 ang=2.161 rot=2105 vq=1.477 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=38.580 ang=3.221 rot=2108 vq=1.505 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=40.295 ang=4.372 rot=2111 vq=1.432 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.493
+Monitor | Vd: -0.864
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+Monitor | Cq: 0.011
+Monitor | Cd: -0.021
+Monitor | vel: 41.441
+[VEL DBG] ctrl=1 tt=2 sv=41.441 ang=5.605 rot=2114 vq=1.509 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | angle: 13292.737
+[VEL DBG] ctrl=1 tt=2 sv=40.033 ang=0.440 rot=2118 vq=1.505 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=41.174 ang=1.571 rot=2121 vq=1.481 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.492
+Monitor | Vd: -0.939
+[VEL DBG] ctrl=1 tt=2 sv=39.306 ang=2.643 rot=2124 vq=1.453 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.012
+Monitor | Cd: 0.001
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+Monitor | vel: 40.703
+Monitor | angle: 13363.894
+[VEL DBG] ctrl=1 tt=2 sv=39.090 ang=3.829 rot=2127 vq=1.411 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=41.567 ang=5.045 rot=2130 vq=1.533 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.17V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.635 ang=6.173 rot=2133 vq=1.516 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.409
+Monitor | Vd: -0.763
+Monitor | Cq: 0.032
+Monitor | Cd: -0.003
+[VEL DBG] ctrl=1 tt=2 sv=40.073 ang=0.960 rot=2137 vq=1.475 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 38.741
+Monitor | angle: 13434.928
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=41.321 ang=2.154 rot=2140 vq=1.493 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=39.361 ang=3.267 rot=2143 vq=1.555 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+Monitor | Vq: 1.489
+[VEL DBG] ctrl=1 tt=2 sv=40.999 ang=4.485 rot=2146 vq=1.390 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -0.974
+Monitor | Cq: 0.012
+Monitor | Cd: 0.012
+Monitor | vel: 39.657
+Monitor | angle: 13505.938
+[VEL DBG] ctrl=1 tt=2 sv=40.917 ang=5.582 rot=2149 vq=1.536 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=38.340 ang=0.466 rot=2153 vq=1.424 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=40.922 ang=1.592 rot=2156 vq=1.476 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.402
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | Vd: -0.816
+Monitor | Cq: 0.016
+Monitor | Cd: 0.000
+[VEL DBG] ctrl=1 tt=2 sv=38.821 ang=2.790 rot=2159 vq=1.441 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 39.239
+Monitor | angle: 13576.709
+[VEL DBG] ctrl=1 tt=2 sv=39.883 ang=3.902 rot=2162 vq=1.450 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=40.443 ang=5.160 rot=2165 vq=1.495 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.469
+[VEL DBG] ctrl=1 tt=2 sv=39.812 ang=6.279 rot=2168 vq=1.474 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -0.851
+Monitor | Cq: 0.021
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+Monitor | Cd: -0.005
+Monitor | vel: 40.394
+Monitor | angle: 13647.666
+[VEL DBG] ctrl=1 tt=2 sv=40.910 ang=1.114 rot=2172 vq=1.406 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=41.095 ang=2.233 rot=2175 vq=1.607 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.325 ang=3.297 rot=2178 vq=1.556 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.479
+Monitor | Vd: -0.852
+Monitor | Cq: 0.007
+[VEL DBG] ctrl=1 tt=2 sv=41.201 ang=4.519 rot=2181 vq=1.395 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cd: 0.002
+Monitor | vel: 40.307
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+Monitor | angle: 13718.165
+[VEL DBG] ctrl=1 tt=2 sv=40.231 ang=5.722 rot=2184 vq=1.474 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=39.658 ang=0.569 rot=2188 vq=1.497 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+Monitor | Vq: 1.447
+[VEL DBG] ctrl=1 tt=2 sv=41.455 ang=1.726 rot=2191 vq=1.471 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -0.908
+Monitor | Cq: 0.023
+Monitor | Cd: -0.012
+Monitor | vel: 40.117
+[VEL DBG] ctrl=1 tt=2 sv=39.640 ang=2.916 rot=2194 vq=1.488 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | angle: 13789.403
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=40.260 ang=3.971 rot=2197 vq=1.460 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=39.167 ang=5.093 rot=2200 vq=1.470 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+Monitor | Vq: 1.479
+Monitor | Vd: -0.987
+Monitor | Cq: 0.020
+[VEL DBG] ctrl=1 tt=2 sv=39.452 ang=0.006 rot=2204 vq=1.491 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cd: 0.009
+Monitor | vel: 40.699
+Monitor | angle: 13860.334
+[VEL DBG] ctrl=1 tt=2 sv=41.338 ang=1.223 rot=2207 vq=1.409 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=40.649 ang=2.349 rot=2210 vq=1.534 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=38.224 ang=3.462 rot=2213 vq=1.494 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.442
+Monitor | Vd: -0.766
+[FW LOOP] alive vin=12.16V ok=1 mode=velocity tgt=0.000
+Monitor | Cq: 0.028
+Monitor | Cd: -0.009
+Monitor | vel: 39.095
+[VEL DBG] ctrl=1 tt=2 sv=41.264 ang=4.738 rot=2216 vq=1.413 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | angle: 13931.424
+[VEL DBG] ctrl=1 tt=2 sv=39.139 ang=5.795 rot=2219 vq=1.468 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=39.309 ang=0.578 rot=2223 vq=1.474 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.473
+Monitor | Vd: -1.002
+[VEL DBG] ctrl=1 tt=2 sv=41.484 ang=1.899 rot=2226 vq=1.449 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.021
+Monitor | Cd: 0.009
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+Monitor | vel: 41.339
+Monitor | angle: 14002.313
+[VEL DBG] ctrl=1 tt=2 sv=38.720 ang=2.977 rot=2229 vq=1.471 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=40.082 ang=4.145 rot=2232 vq=1.449 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.17V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=41.434 ang=5.260 rot=2235 vq=1.500 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.461
+Monitor | Vd: -0.876
+Monitor | Cq: 0.015
+Monitor | Cd: 0.018
+[VEL DBG] ctrl=1 tt=2 sv=39.350 ang=0.026 rot=2239 vq=1.519 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 39.975
+Monitor | angle: 14073.762
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=40.682 ang=1.273 rot=2242 vq=1.434 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=40.673 ang=2.451 rot=2245 vq=1.531 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.19V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+Monitor | Vq: 1.427
+Monitor | Vd: -0.816
+[VEL DBG] ctrl=1 tt=2 sv=39.928 ang=3.600 rot=2248 vq=1.463 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.026
+Monitor | Cd: -0.018
+Monitor | vel: 41.694
+Monitor | angle: 14143.207
+[VEL DBG] ctrl=1 tt=2 sv=41.649 ang=4.765 rot=2251 vq=1.441 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=40.024 ang=5.872 rot=2254 vq=1.509 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=39.862 ang=0.718 rot=2258 vq=1.418 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.385
+Monitor | Vd: -0.895
+[FW LOOP] alive vin=12.18V ok=1 mode=velocity tgt=0.000
+Monitor | Cq: 0.029
+Monitor | Cd: -0.002
+[VEL DBG] ctrl=1 tt=2 sv=40.227 ang=1.927 rot=2261 vq=1.428 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 38.966
+Monitor | angle: 14213.108
+[VEL DBG] ctrl=1 tt=2 sv=38.663 ang=3.028 rot=2264 vq=1.482 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.24V ok=1 mode=velocity tgt=0.000
+Status: 0
+[Studio] 电机已失能
+[VEL DBG] ctrl=1 tt=2 sv=0.018 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.458
+Monitor | Vd: -1.020
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.016
+Monitor | Cd: 0.018
+[FW LOOP] alive vin=12.22V ok=1 mode=velocity tgt=0.000
+Monitor | vel: 0.000
+Monitor | angle: 14242.654
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.24V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.458
+Monitor | Vd: -1.020
+Monitor | Cq: 0.016
+Monitor | Cd: 0.018
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 0.000
+Monitor | angle: 14242.654
+[FW LOOP] alive vin=12.23V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.21V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+Monitor | Vq: 1.458
+Monitor | Vd: -1.020
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cq: 0.016
+Monitor | Cd: 0.018
+Monitor | vel: 0.000
+Monitor | angle: 14242.654
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.21V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.458
+[FW LOOP] alive vin=12.21V ok=1 mode=velocity tgt=0.000
+Monitor | Vd: -1.020
+Monitor | Cq: 0.016
+Monitor | Cd: 0.018
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 0.000
+Monitor | angle: 14242.654
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.458
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -1.020
+Monitor | Cq: 0.016
+[FW LOOP] alive vin=12.22V ok=1 mode=velocity tgt=0.000
+Monitor | Cd: 0.018
+Monitor | vel: 0.000
+Monitor | angle: 14242.654
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.21V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.458
+Monitor | Vd: -1.020
+Monitor | Cq: 0.016
+Monitor | Cd: 0.018
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | vel: 0.000
+[FW LOOP] alive vin=12.22V ok=1 mode=velocity tgt=0.000
+Monitor | angle: 14242.654
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.24V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+Monitor | Vq: 1.458
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -1.020
+Monitor | Cq: 0.016
+Monitor | Cd: 0.018
+Monitor | vel: 0.000
+Monitor | angle: 14242.654
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.24V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+[FW LOOP] alive vin=12.22V ok=1 mode=velocity tgt=0.000
+Monitor | Vq: 1.458
+Monitor | Vd: -1.020
+Monitor | Cq: 0.016
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cd: 0.018
+Monitor | vel: 0.000
+Monitor | angle: 14242.654
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.21V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.458
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vd: -1.020
+[FW LOOP] alive vin=12.24V ok=1 mode=velocity tgt=0.000
+Monitor | Cq: 0.016
+Monitor | Cd: 0.018
+Monitor | vel: 0.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | angle: 14242.654
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.21V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | target: 40.000
+Monitor | Vq: 1.458
+Monitor | Vd: -1.020
+Monitor | Cq: 0.016
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Cd: 0.018
+Monitor | vel: 0.000
+[FW LOOP] alive vin=12.24V ok=1 mode=velocity tgt=0.000
+Monitor | angle: 14242.654
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.22V ok=1 mode=velocity tgt=0.000
+Monitor | target: 40.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | Vq: 1.458
+Monitor | Vd: -1.020
+Monitor | Cq: 0.016
+Monitor | Cd: 0.018
+Monitor | vel: 0.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+Monitor | angle: 14242.654
+[FW LOOP] alive vin=12.22V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+已断开 ...
+已连接 ...
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.20V ok=1 mode=velocity tgt=0.000
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[VEL DBG] ctrl=1 tt=2 sv=0.000 ang=4.956 rot=2266 vq=1.458 P=0.0025 I=0.0127 lim=2.000 mds=0
+[FW LOOP] alive vin=12.21V ok=1 mode=velocity tgt=0.000
+已断开 ...
