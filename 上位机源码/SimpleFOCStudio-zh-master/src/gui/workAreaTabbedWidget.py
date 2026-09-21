@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import json
+import os
+from pathlib import Path
 
 from PyQt5 import QtWidgets
 
@@ -176,12 +178,24 @@ class WorkAreaTabbedWidget(QtWidgets.QTabWidget):
 
 
     def saveToFile(self, deviceToSave, file):
-        if type(file) is list:
-            with open(file[0], 'w', encoding='utf-8') as f:
-                f.write(json.dumps(deviceToSave.toJSON(), indent=4, sort_keys=True))
-        else:
-            with open(file, 'w', encoding='utf-8') as f:
-                f.write(json.dumps(deviceToSave.toJSON(), indent=4, sort_keys=True))
+        # 路径安全收口（Mimosa 要求）：只取 basename，固定落 exports/ 目录
+        #（本文件位于 <root>/src/gui/，dirname 链取根；Path.write_text 落盘）
+        if isinstance(file, list):
+            if not file:
+                return
+            file = file[0]
+        fileName = os.path.basename(str(file).replace('\x00', '')
+                                    .replace('\\', '/'))
+        if not fileName:
+            return
+        root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))))
+        exportsDir = os.path.join(root, 'exports')
+        os.makedirs(exportsDir, exist_ok=True)
+        target = Path(exportsDir) / fileName
+        target.write_text(
+            json.dumps(deviceToSave.toJSON(), indent=4, sort_keys=True),
+            encoding='utf-8')
 
     def openConsoleTool(self):
         trace('[UI] openConsoleTool clicked existing=%r', self.cmdLineTool is not None)

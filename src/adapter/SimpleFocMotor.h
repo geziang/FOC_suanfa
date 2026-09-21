@@ -66,6 +66,12 @@ public:
 
   void setLoopGains(LoopType loop, const LoopGains& g) override;
 
+  /// Studio MC 命令的 mode_ 回写（仅同步 FocKit 内部枚举，不触碰 SimpleFOC
+  /// controller/torque_controller——那些由 MC/MT 命令本身生效）。
+  /// 消除"直通不同步"缺陷：否则 Idle 覆写分支在速度/位置模式下仍每拍改写
+  /// shaft_velocity，与 move() 双路径同写（速度环失控排查中发现的确定缺陷）。
+  void syncStudioControlMode(int simplefocControl);
+
   void update() override;
 
   bool saveCalibration() override;

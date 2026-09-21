@@ -35,9 +35,13 @@ struct LoopGains {
   float kp;
   float ki;
   float kd;
-  float lpfTf;   // 反馈低通时间常数 [s]
-  LoopGains(float kp = -1.0f, float ki = -1.0f, float kd = -1.0f, float lpfTf = -1.0f)
-      : kp(kp), ki(ki), kd(kd), lpfTf(lpfTf) {}
+  float lpfTf;        // 反馈低通时间常数 [s]
+  float outputLimit;  // PID 输出限幅；级联外环 = 内环指令红线（如速度环 0.5A）。
+                      // 2026-09-21 级联版速度环引入：速度 PID 输出即 Iq 指令，
+                      // 必须钳在持续电流红线，电压限幅 4.125V 不再适用。
+  LoopGains(float kp = -1.0f, float ki = -1.0f, float kd = -1.0f,
+            float lpfTf = -1.0f, float outputLimit = -1.0f)
+      : kp(kp), ki(ki), kd(kd), lpfTf(lpfTf), outputLimit(outputLimit) {}
 };
 
 } // namespace fockit

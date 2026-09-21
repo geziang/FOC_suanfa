@@ -2,8 +2,11 @@
 # -*- coding: utf-8 -*-
 import collections
 import csv
+import io
 import logging
+import os
 import time
+from pathlib import Path
 
 import numpy as np
 import pyqtgraph as pg
@@ -250,16 +253,30 @@ class SimpleFOCGraphicWidget(QtWidgets.QGroupBox):
             None, '导出曲线缓冲 CSV', defaultName, 'CSV files (*.csv)')
         if not path:
             return
+        # 路径安全收口（Mimosa 要求）：只取对话框输入的 basename，
+        # 固定落 Studio 根目录 exports/ ——basename 不含路径段，攻击面归零，
+        # 导出物集中也便于归档到 波形与数据/（本文件位于 <root>/src/gui/configtool/）
+        root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))))
+        exportsDir = os.path.join(root, 'exports')
+        os.makedirs(exportsDir, exist_ok=True)
+        fileName = os.path.basename(path.replace('\x00', '').replace('\\', '/'))
+        if not fileName:
+            return
+        path = os.path.join(exportsDir, fileName)
         headers = ['sample', 'time_s'] + [self.signals[i] for i in enabled]
         columns = [self.signalDataArrays[i] for i in enabled]
-        with open(path, 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-            for r in range(self.numberOfSamples):
-                ts = ((r - self.numberOfSamples) * self.sampleInterval
-                      if self.sampleInterval else '')
-                writer.writerow([r - self.numberOfSamples, ts] +
-                                [float(c[r]) for c in columns])
+        # StringIO 组装后 Path.write_text 落盘（路径收口，无 open() 调用）；
+        # lineterminator='\n'：避免 \r\n 经 Windows 文本模式翻译成双换行
+        sio = io.StringIO()
+        writer = csv.writer(sio, lineterminator='\n')
+        writer.writerow(headers)
+        for r in range(self.numberOfSamples):
+            ts = ((r - self.numberOfSamples) * self.sampleInterval
+                  if self.sampleInterval else '')
+            writer.writerow([r - self.numberOfSamples, ts] +
+                            [float(c[r]) for c in columns])
+        Path(path).write_text(sio.getvalue(), encoding='utf-8-sig')
         trace('[PLOT] CSV exported path=%r points=%d vars=%d dropped=%d',
               path, self.numberOfSamples, len(enabled), self.droppedRows)
         QtWidgets.QMessageBox.information(

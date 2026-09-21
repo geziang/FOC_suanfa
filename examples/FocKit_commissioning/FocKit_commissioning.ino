@@ -20,11 +20,13 @@
 // 电流环（对象 G=1/(Ls+R)，PI 零极对消法）：
 //   kp_i = L·ωc = 4.25mH×125 = 0.53 [V/A]
 //   ki_i = R·ωc = 8.25Ω×125  = 1031 [V/A/s]（校验：ki/kp=R/L ✓）
-// 速度环（对象：电压域力矩通道 1/R × KT × 1/(Js)）：
-//   kp_v = ωv·J·R/KT；J 来源③：官方基线 0.021 V/(rad/s) 在 ωv=20 下反推
-//   → J ≈ 1.05e-5 kg·m²（10.5 g·cm²，2208 转子合理量级；P3 辨识收口）
-//   → kp_v = 0.021（计算链复现官方基线 = 一致性自检通过）
-//   ki_v = 5×kp_v = 0.105（抗扰恢复经验系数，与官方 0.12 同量级）
+// 速度环（级联版 2026-09-21：对象 = 冻结电流环(ωc=125，近似直通) × KT × 1/(Js)）：
+//   kp_v = ωv·J/KT = 0.0025 [A/(rad/s)]（R 由电流内环接管，建模不再含 R）
+//   J 来源③：官方电压域基线 0.021 V/(rad/s) 在 ωv=20 下反推（J 与域无关）
+//     → J ≈ 1.05e-5 kg·m²（10.5 g·cm²，2208 转子合理量级；P3 收口）
+//   ki_v = 5×kp_v = 0.0127（抗扰恢复经验系数）
+//   输出限幅 = 0.5A 持续红线（速度 PID 输出即 Iq 指令，级联安全钳位）
+//   （电压域旧版 kp=0.021/ki=0.105 复现官方基线，为对照历史存档，见 REF-12 §4.2）
 // 位置环（内环近似理想积分器，P 控制）：
 //   kp_p = ωp = 4 [1/s]（官方 P=20 对应更激进 ωp，空载可用；加载按超调回退）
 // ============================================================
@@ -87,8 +89,8 @@ void computeGains() {
   Serial.println(F("[FW BOOT] computeGains enter"));
   kpI = L_PH * WC;                   // 4.25  [V/A]
   kiI = R_PH * WC;                   // 8250  [V/A/s]
-  kpV = WV * J_EST * R_PH / KT_M;    // 0.021 [V/(rad/s)]（复现官方基线=自检通过）
-  kiV = 5.0f * kpV;                  // 0.105
+  kpV = WV * J_EST / KT_M;         // 0.0025 [A/(rad/s)] 级联版：踩冻结电流环，R 已除
+  kiV = 5.0f * kpV;                // 0.0127
   kpP = WP;                          // 4     [1/s]
   Serial.printf("[整定] 参数: R=%.2fΩ L=%.2fmH KT=%.4f J=%.2e kg·m²(③反推,P3收口)\n",
                 (double)R_PH, (double)(L_PH * 1000.0f), (double)KT_M, (double)J_EST);
@@ -96,7 +98,8 @@ void computeGains() {
                 (double)WC, (double)WV, (double)WP);
   Serial.printf("[整定] 电流环 kp=%.2f ki=%.0f（ωc=125 定档，T-P1-3 已验收）\n",
                 (double)kpI, (double)kiI);
-  Serial.printf("[整定] 速度环 kp=%.4f ki=%.4f（官方基线 0.021/0.12）\n",
+  Serial.printf("[整定] 速度环 kp=%.4f ki=%.4f A/(rad/s)（级联版：踩冻结电流环，"
+                "R 已除，限幅 0.5A；电压域旧基线 0.021 为对照存档）\n",
                 (double)kpV, (double)kiV);
   Serial.printf("[整定] 位置环 kp=%.1f（官方 20 激进，空载可用）\n", (double)kpP);
   Serial.println(F("[FW BOOT] computeGains returned"));
@@ -106,7 +109,8 @@ void applyGains() {
   Serial.println(F("[FW BOOT] applyGains enter"));
   motor.setLoopGains(LoopType::CurrentQ, LoopGains(kpI, kiI, 0.0f, 0.002f));
   motor.setLoopGains(LoopType::CurrentD, LoopGains(kpI, kiI, 0.0f, 0.002f));
-  motor.setLoopGains(LoopType::Velocity, LoopGains(kpV, kiV, 0.0f, 0.01f));
+  motor.setLoopGains(LoopType::Velocity,
+                     LoopGains(kpV, kiV, 0.0f, 0.01f, 0.5f));  // 0.5A=持续红线钳位
   motor.setLoopGains(LoopType::Position, LoopGains(kpP));
   Serial.println("[整定] 三环增益已按计算值注入（Studio 拉取可见）");
   Serial.println(F("[FW BOOT] applyGains returned"));

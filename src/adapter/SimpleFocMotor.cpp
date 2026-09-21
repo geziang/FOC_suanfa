@@ -176,6 +176,19 @@ void SimpleFocMotor::enable()  { if (inited_) motor_.enable(); }
 void SimpleFocMotor::disable() { if (inited_) motor_.disable(); }
 bool SimpleFocMotor::isEnabled() { return inited_ && motor_.enabled; }
 
+void SimpleFocMotor::syncStudioControlMode(int simplefocControl) {
+  // Studio MC 直通的 mode_ 回写（枚举映射与 setMode 一致，但只改 mode_ 本身）：
+  // 0=力矩 1=速度 2=位置；3/4 开环变体按力矩态处理（覆写分支只做状态喂给，无害）。
+  // 若不回写，速度/位置会话下 mode_ 残留 Idle/Torque，update() 的覆写分支
+  // 将与 SimpleFOC move() 双路径同写 shaft_velocity（速度环失控案的头号嫌疑）。
+  switch (simplefocControl) {
+    case 1: mode_ = ControlMode::Velocity; break;
+    case 2: mode_ = ControlMode::Position; break;
+    case 0:
+    default: mode_ = ControlMode::Torque; break;
+  }
+}
+
 void SimpleFocMotor::setMode(ControlMode mode) {
   if (!inited_) return;
   mode_ = mode;
@@ -260,6 +273,7 @@ void SimpleFocMotor::setLoopGains(LoopType loop, const LoopGains& g) {
     if (g.kp >= 0.0f) pid->P = g.kp;   // -1 = 不变更
     if (g.ki >= 0.0f) pid->I = g.ki;
     if (g.kd >= 0.0f) pid->D = g.kd;   // Position 环为 P 控制，仅 kp 生效
+    if (g.outputLimit >= 0.0f) pid->limit = g.outputLimit;  // 级联外环指令红线
   }
   if (lpf != nullptr && g.lpfTf >= 0.0f) lpf->Tf = g.lpfTf;
 }

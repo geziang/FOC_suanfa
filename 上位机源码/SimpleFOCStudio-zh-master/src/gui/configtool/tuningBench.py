@@ -101,7 +101,7 @@ class TuningBenchWidget(WorkAreaTabWidget):
                         vars=[True, True, True, True, True, False, True],
                         downsample=100, unit='A', default=0.15, redline=0.5,
                         cards=('currentQ', 'currentD'), response=3),
-        'velocity': dict(title='速度环', torque=0, motion=1,
+        'velocity': dict(title='速度环', torque=2, motion=1,   # 级联版(2026-09-21)：MT2+MC1
                          vars=[True, True, False, False, False, True, False],
                          downsample=100, unit='rad/s', default=3.0, redline=None,
                          cards=('velocity',), response=5),
@@ -237,6 +237,16 @@ class TuningBenchWidget(WorkAreaTabWidget):
             self.readoutLayout.addWidget(caption)
             self.readoutLayout.addWidget(value)
         self.readoutLayout.addStretch(1)
+        # 固件模式指示（2026-09-21 失控案防再犯）：与本环不符标红——
+        # 数据源 device.controlType/torqueType（MC/MT 应答解析），连接拉取与
+        # 原子模式重发都会刷新它
+        self.fwModeCaption = QtWidgets.QLabel('固件模式')
+        self.fwModeLabel = QtWidgets.QLabel('—')
+        fwFont = self.fwModeLabel.font()
+        fwFont.setBold(True)
+        self.fwModeLabel.setFont(fwFont)
+        self.readoutLayout.addWidget(self.fwModeCaption)
+        self.readoutLayout.addWidget(self.fwModeLabel)
         # 判据行（阶跃测量自动结算：tr/σ%/ts/ess，本次 vs 上次两轮复现对比）
         self.metricsCaption = QtWidgets.QLabel('判据')
         self.metricsNow = QtWidgets.QLabel('（点 ▶±幅值 后自动测量）')
@@ -321,6 +331,13 @@ class TuningBenchWidget(WorkAreaTabWidget):
         if not self.device.isConnected:
             return
         trace('[TUNE] send target=%r loop=%r', value, self.activeLoop)
+        # 原子模式保证（2026-09-21 失控案防再犯）：每次非零目标前幂等重发本环
+        # MT+MC——断连重连/板卡复位/命令丢失后模式永远就位，目标不再落进力矩
+        # 模式被解释成恒压（Vq 直通无钳位的失控根源）。
+        if value != 0 and self.activeLoop:
+            cfg = self.LOOPS[self.activeLoop]
+            self.device.sendTorqueType(cfg['torque'])
+            self.device.sendControlType(cfg['motion'])
         self.device.sendTargetValue(value)
         # 非零目标 = 阶跃：通知波形开启判据测量窗。
         # Cq/Cd 曲线单位是 mA（库 monitor ×1000），目标按通道尺度换算
@@ -364,7 +381,28 @@ class TuningBenchWidget(WorkAreaTabWidget):
         self.readoutLabels['angle'].setText('%.3f' % float(d_.angleNow or 0))
         prefix = '当前Q轴目标：' if self.activeLoop == 'current' else '当前目标：'
         self.currentTargetLabel.setText('%s%.3f %s' % (prefix, target, unit))
+        self._renderFwMode()
         self._renderMetrics()
+
+    def _renderFwMode(self):
+        """固件模式指示：显示 controller/torque 实际状态，与本环预期不符标红。"""
+        motionNames = {0: '力矩', 1: '速度', 2: '位置', 3: '速度开环', 4: '位置开环'}
+        torqueNames = {0: '电压', 1: '直流电流', 2: 'FOC电流'}
+        m = self.device.controlType
+        t = self.device.torqueType
+        self.fwModeLabel.setText('%s/%s' % (motionNames.get(m, '?'),
+                                            torqueNames.get(t, '?')))
+        if self.activeLoop:
+            cfg = self.LOOPS[self.activeLoop]
+            ok = (m == cfg['motion'] and t == cfg['torque'])
+            self.fwModeLabel.setStyleSheet(
+                'color:#2e7d32;' if ok else 'color:#d32f2f;')
+            self.fwModeCaption.setToolTip(
+                '固件 controller/torque 实际状态（MC/MT 应答解析）。\n'
+                '与本环不符时标红——此时发目标会被错误解释，'
+                '点一次 ▶±幅值 即自动纠正（原子模式重发）。')
+        else:
+            self.fwModeLabel.setStyleSheet('')
 
     def _renderMetrics(self):
         m = self.graphicWidget.lastMetrics
