@@ -103,6 +103,8 @@ private:
   uint32_t updateCount_ = 0;
   /// 曲线流限速闸（2026-09-20）：两次 monitor() 放行的最小间隔
   uint32_t lastMonitorGateMs_ = 0;
+  /// 测速链诊断探针（2026-09-21）：速度/位置模式期间 500ms 一行 [VEL DBG]
+  uint32_t lastVelDbgMs_ = 0;
 };
 
 } // namespace fockit

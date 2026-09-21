@@ -49,7 +49,7 @@ struct MotorProfile {
   float lineInductance;  // [H]  线间（星形串联推算 2×相电感，验证用）
   float phaseInductance; // [H]  相电感（官方明确）
   float kv;              // [rpm/V]
-  float kt;              // [N·m/A] 公式初值 = 8.27/KV（SI 下 Ke=KT），T-P1-4 实测收口
+  float kt;              // [N·m/A] ②实测收口 2026-09-21（四点稳态定标，SI 下 Ke=KT）
   float ratedCurrent;    // [A] 持续电流上限（官方 200~500mA 取上限）
   float maxCurrent;      // [A] 峰值（官方未给，按持续上限执行）
   float ratedVoltage;    // [V]
@@ -60,7 +60,8 @@ constexpr MotorProfile MOTOR_2208 = {
     16.5f, 8.25f,
     0.0085f, 0.00425f,
     100.0f,
-    0.0827f,
+    0.032f,  // ②实测 2026-09-21：10/20/30/40 rad/s 稳态 vq=0.224+0.0320·ω（残差±3%）；
+             // 旧公式值 8.27/KV 因输入 KV=100 失实废弃（实测 KV_eff≈300，kv 规格行仅备查）
     0.5f, 0.5f,
     12.0f};
 
@@ -68,7 +69,8 @@ constexpr MotorProfile MOTOR_2208 = {
 // 电流上限取官方持续范围上限 0.5A（峰值官方未给，按持续执行；瞬时过载须另立实验依据）
 // 电压上限 = 0.5A × 8.25Ω ≈ 4.1V，同时受实测母线电压钳制
 constexpr float DEFAULT_CURRENT_LIMIT = MOTOR_2208.ratedCurrent;
-constexpr float DEFAULT_TORQUE_LIMIT  = 0.03f;  // [N·m] 官方标称扭力（≈0.36A，落在持续带内）
+constexpr float DEFAULT_TORQUE_LIMIT  = 0.016f; // [N·m] = 0.5A × KT实测0.032（持续红线一致）
+                                                // 2026-09-21 更正：旧 0.03 在新 KT 下折 0.94A 越线
 
 /// 上电早期初始化：复刻官方例程的启动仪式（相线输入上拉 + 12bit ADC），
 /// 必须在任何 driver.init() 之前调用一次。

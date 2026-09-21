@@ -32,6 +32,31 @@ void StudioBridge::update() {
     lastMonitorGateMs_ = nowMs;
     motor_->rawMotor().monitor();
   }
+
+  // 测速链诊断探针（2026-09-21，速度环失控案）：速度/位置模式期间 500ms 一行。
+  // 只读无副作用字段（不调 getVelocity——它有内部状态副作用）。
+  // 判读：相邻两行 (rot*2π+ang) 差 / 0.5s = 真实角速度，与 sv 对比即知测速链好坏；
+  // lim 应=4.125、mds 应=0、P/I 应=速度环写入值——偏离即 RAM 污染。
+  if (nowMs - lastVelDbgMs_ >= 500) {
+    lastVelDbgMs_ = nowMs;
+    const BLDCMotor& bm = motor_->rawMotor();
+    if (bm.controller == MotionControlType::velocity ||
+        bm.controller == MotionControlType::angle) {
+      const float mechAngle =
+          bm.sensor != nullptr ? bm.sensor->getMechanicalAngle() : 0.0f;
+      const long fullRot =
+          bm.sensor != nullptr ? (long)bm.sensor->getFullRotations() : 0;
+      dbgPort_->printf(
+          "[VEL DBG] ctrl=%d tt=%d sv=%.3f ang=%.3f rot=%ld vq=%.3f",
+          (int)bm.controller, (int)bm.torque_controller,
+          (double)bm.shaft_velocity, (double)mechAngle, fullRot,
+          (double)bm.voltage.q);
+      dbgPort_->printf(" P=%.4f I=%.4f lim=%.3f mds=%d\n",
+                       (double)bm.PID_velocity.P, (double)bm.PID_velocity.I,
+                       (double)bm.PID_velocity.limit,
+                       (int)bm.motion_downsample);
+    }
+  }
   if (trace_ && dbgPort_) {
     uint32_t now = millis();
     if (now - lastUpdateHeartbeatMs_ >= 1000) {
@@ -135,6 +160,14 @@ void StudioBridge::handleCmd_(char* cmd) {
   }
   cmd_.motor(&motor_->rawMotor(), cmd);  // 先执行（生效）
   if (trace_ && dbgPort_) dbgPort_->println(F("[FW STUDIO] forwarding returned"));
+
+  // Studio 的 MC 直通 SimpleFOC 不更新 FocKit 的 mode_（EXP-02/REF-12 §6.2
+  // "直通绕过防御"家族）——不回写则 Idle 覆写分支在速度/位置模式下仍每拍
+  // 改写 shaft_velocity，与 move() 双路径同写。此处只同步枚举，不触碰
+  // controller/torque_controller（MT 力矩类型由 Studio 命令自己管）。
+  if (raw[0] == 'C' && raw[1] >= '0' && raw[1] <= '4') {
+    motor_->syncStudioControlMode(raw[1] - '0');
+  }
 
   if (!isGet) describeSet_(raw);  // 再回读，打印确认
 }

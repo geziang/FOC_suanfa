@@ -22,9 +22,10 @@
 //   ki_i = R·ωc = 8.25Ω×125  = 1031 [V/A/s]（校验：ki/kp=R/L ✓）
 // 速度环（级联版 2026-09-21：对象 = 冻结电流环(ωc=125，近似直通) × KT × 1/(Js)）：
 //   kp_v = ωv·J/KT = 0.0025 [A/(rad/s)]（R 由电流内环接管，建模不再含 R）
-//   J 来源③：官方电压域基线 0.021 V/(rad/s) 在 ωv=20 下反推（J 与域无关）
-//     → J ≈ 1.05e-5 kg·m²（10.5 g·cm²，2208 转子合理量级；P3 收口）
-//   ki_v = 5×kp_v = 0.0127（抗扰恢复经验系数）
+//   J 来源②：2026-09-21 随 KT 实测定标等比更正（③反推值 ×KT实/KT表）
+//     → J ≈ 4.06e-6 kg·m²（取值保 kpV=0.00254 与在线整定零漂移；P3 spin-up 交叉验证待做）
+//   ki_v = N×kp_v，N=10 → 0.0254（ζ=½√(ωv/N)=0.707；2026-09-21 探针验证写入
+//     落地 + 10~40 rad/s 平滑收敛；低速边界 5~10 rad/s 停-走区见 T-P1-6）
 //   输出限幅 = 0.5A 持续红线（速度 PID 输出即 Iq 指令，级联安全钳位）
 //   （电压域旧版 kp=0.021/ki=0.105 复现官方基线，为对照历史存档，见 REF-12 §4.2）
 // 位置环（内环近似理想积分器，P 控制）：
@@ -73,8 +74,8 @@ StudioBridge studio;
 // ========== 建模与带宽计算区（计算优先，参数全部可溯源） ==========
 constexpr float R_PH = dengfoc_v4::MOTOR_2208.phaseResistance;  // 8.25 Ω   ①标称
 constexpr float L_PH = dengfoc_v4::MOTOR_2208.phaseInductance;  // 4.25 mH  ①标称
-constexpr float KT_M = dengfoc_v4::MOTOR_2208.kt;               // 0.0827   ①标称
-constexpr float J_EST = 1.05e-5f;  // kg·m² ③反推（官方速度基线@ωv=20），P3 收口
+constexpr float KT_M = dengfoc_v4::MOTOR_2208.kt;               // 0.032    ②实测（2026-09-21 四点定标）
+constexpr float J_EST = 4.06e-6f;  // kg·m² ②实测 2026-09-21（③反推等比更正；保 kpV 零漂移；P3 spin-up 待做）
 
 // 电流环带宽：2026-09-21 T-P1-3 实测定档（TST-01）——堵转判据全绿
 // （ess≤0.3%、Cd≤3%、纹波≤2%、双向对称，EXP-03）；同时受主循环 ~1.35kHz
@@ -90,7 +91,7 @@ void computeGains() {
   kpI = L_PH * WC;                   // 4.25  [V/A]
   kiI = R_PH * WC;                   // 8250  [V/A/s]
   kpV = WV * J_EST / KT_M;         // 0.0025 [A/(rad/s)] 级联版：踩冻结电流环，R 已除
-  kiV = 5.0f * kpV;                // 0.0127
+  kiV = 10.0f * kpV;               // 0.0254  N=10（ζ=0.707；2026-09-21 定档，低速边界 5~10 见 T-P1-6）
   kpP = WP;                          // 4     [1/s]
   Serial.printf("[整定] 参数: R=%.2fΩ L=%.2fmH KT=%.4f J=%.2e kg·m²(③反推,P3收口)\n",
                 (double)R_PH, (double)(L_PH * 1000.0f), (double)KT_M, (double)J_EST);
