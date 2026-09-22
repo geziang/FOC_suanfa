@@ -52,7 +52,6 @@ using namespace fockit;
 SimpleFocMotor motor(defaultM0Config());  // 电流采样默认接入（M0: 39/36），标定与 01 号共用 NVS
 SerialShell shell;
 PowerMonitor power;
-StudioBridge studio;
 
 // ========== 计算区（参数全部可溯源，HW-DENG / REF-14 §3） ==========
 constexpr float L_PH  = dengfoc_v4::MOTOR_2208.phaseInductance;  // 4.25 mH  ①标称
@@ -182,6 +181,52 @@ bool fcCommands(int argc, char* argv[]) {
 
 void applyVerbose(bool on) { power.setPeriodicVerbose(on); }
 
+// ========== 力控会话桥（Studio 会话期的小写命令出口，零库改动） ==========
+// 背景：shell 让位后串口由会话独占——StudioBridge::update() 内 Commander 自己读口
+// （cmd_.run()），小写力控命令（mode/gv/...）会被 Commander 吞掉。上位机协议字母
+// 全大写（A~Z），力控命令全小写——判别无歧义。本包装自己做串口泵：
+//   小写行 → 力控命令处理器；其余整行 → bridge_.handleLine()（与 shell 触发让位
+//   同一条通路，宽容解析照旧）。bridge_.update() 仍每拍调用（保留曲线流限速闸与
+//   探针侧效应；此时串口已被本泵读空，其内部 Commander 空转无副作用）。
+// 非会话期（纯终端）不经本类：shell dispatch_ 直达 userCb_，两路同归 fcCommands。
+class ForceSession : public ISerialSession {
+public:
+  void begin(SimpleFocMotor* m) { bridge_.begin(m); }
+  void update() override {
+    while (Serial.available() > 0) {
+      char c = (char)Serial.read();
+      if (c == '\n' || c == '\r') {
+        if (bufLen_ > 0) { buf_[bufLen_] = 0; routeLine_(buf_); bufLen_ = 0; }
+      } else if (bufLen_ < (int)(sizeof(buf_) - 1)) {
+        buf_[bufLen_++] = c; buf_[bufLen_] = 0;
+      }
+    }
+    bridge_.update();
+  }
+  void setTrace(bool on) override { bridge_.setTrace(on); }
+  void handleLine(char* line) override { if (line != nullptr) routeLine_(line); }
+private:
+  void routeLine_(char* line) {
+    if (line[0] >= 'a' && line[0] <= 'z') {  // 小写 = 力控命令（协议字母全大写，无歧义）
+      char* argv[6];
+      int argc = 0;
+      char* tok = strtok(line, " \t\r\n");
+      while (tok != nullptr && argc < 6) { argv[argc++] = tok; tok = strtok(nullptr, " \t\r\n"); }
+      if (argc > 0) {
+        for (char* p = argv[0]; *p != 0; ++p) *p = (char)tolower(*p);  // 与 shell 同款小写化
+        fcCommands(argc, argv);
+      }
+      return;
+    }
+    bridge_.handleLine(line);  // 大写/数字行：SimpleFOC 协议原路进 Commander
+  }
+  StudioBridge bridge_;
+  char buf_[48] = {0};
+  int bufLen_ = 0;
+};
+
+ForceSession forceSession;
+
 void setup() {
   Serial.setTxBufferSize(512);  // 突发打印入环形缓冲（须在 begin 前调用，同 01 号）
   Serial.begin(115200);
@@ -210,11 +255,11 @@ void setup() {
   motor.setMode(ControlMode::Torque);  // MT2+MC0 力矩模式打底（全模式共用，不再切走）
   motor.setTorqueTarget(0.0f);         // raw+0 安全启动
 
-  studio.begin(&motor);
-  Serial.println(F("[FW BOOT] studio.begin returned"));
+  forceSession.begin(&motor);  // 会话桥自带 StudioBridge（小写力控命令在会话期放行）
+  Serial.println(F("[FW BOOT] forceSession.begin returned"));
   shell.begin(&motor);
   Serial.println(F("[FW BOOT] shell.begin returned"));
-  shell.attachStudio(&studio);
+  shell.attachStudio(&forceSession);
   shell.attachUserCommand(fcCommands);
   Serial.println(F("[FW BOOT] shell attaches done"));
   shell.attachVerboseHook(applyVerbose);
