@@ -1,7 +1,7 @@
 # SimpleFOCStudio 选型、适配与使用
 
 > 状态：已对齐 ｜ 文档编号：REF-12
-> 最后对齐：2026-09-20 ｜ 上游：ARC-01（契约）、SPEC-T（整定流程）、HW-DENG（工具链与电机参数）
+> 最后对齐：2026-09-22（§4.3 P2 指向 REF-14 两级方案、§6 纪律2 模式档位勘正；§4.2 三环剧本定档内容 2026-09-21 已随 TST-02/03 更新）｜ 上游：ARC-01（契约）、SPEC-T（整定流程）、HW-DENG（工具链与电机参数）
 > 对应代码：`src/adapter/StudioBridge.h/.cpp`、`src/hmi/SerialShell.*`；上位机 `上位机源码/SimpleFOCStudio-zh-master/src/simpleFOCConnector.py`、`src/gui/configtool/connectionControl.py`、`src/gui/mainWindow.py`
 > 实证来源：本地 `上位机源码/SimpleFOCStudio-zh-master`（`simpleFOCConnector.py` 907 行、`device.json`）与已安装库 `Simple_FOC 2.2.1`（`communication/commands.h`）——**协议两端均经源码核实，非文档转述**
 >
@@ -183,7 +183,7 @@
 
 ### 4.3 后续需求
 
-- **P2 力控**：Studio 做激励（模式/目标）与曲线观测，整定逻辑随算法立项细化；
+- **P2 力控（2026-09-22 立项，无连杆模式）**：上位机**一级零改动**（现力矩模式+整定台量化包直接用，参数走串口命令）；"力控预设卡"（θ\*/G_v/K/D 在线调＋写入必读回）为二级方案后置另立项——两级方案见 REF-14 §5；
 - **P4**：见 §1 边界。
 
 ## 5. 使用流程（操作手册）
@@ -250,7 +250,7 @@ FOC_TRACE_VERBOSE=1 python simpleFOCStudio.py
 ## 6. 纪律与边界
 
 1. **RAM 值纪律**：Studio 改动重启即失——调好必抄回代码（bsp/control 默认值）并在验收记录登记，NVS 只固化编码器标定；
-2. **模式切换安全**：Studio 的 `MC` 直通固件、绕过我们的清目标防御——**切模式前目标归零**；P0 阶段只允许 `MT0`；
+2. **模式切换安全**：Studio 的 `MC` 直通固件、绕过我们的清目标防御——**切模式前目标归零**；标准档位=**MT2**（foc_current，2026-09-21 电流环验收起），`MT0` 电压力矩仅作诊断/对照用（EXP-06 电压域错配案：域遗留曾是位置环灾难根因）；
 3. **中间件 PID 不可达**：Studio 整定页只覆盖 SimpleFOC 环；中间件环用 `pid v/p`（增强项挂账 §4.2）；
 4. **数据落盘**：整定曲线 Studio 截图 + 我们 `stream` CSV 双轨，落 `06_验证与实验记录/波形与数据/`；
 5. **契约**：StudioBridge 之外任何层不得引用 Commander/SimpleFOC 类型。
