@@ -27,7 +27,8 @@ src/
 ├── control/    PID、VelocityNode、PositionNode（中间件三环起步）
 ├── persist/    CalibrationStore（NVS 标定固化，对标 STM32 Flash 双页）
 └── hmi/        SerialShell（串口调参命令行）
-examples/       唯一主程序 FocKit_commissioning：电压力矩冒烟 + 三环（电流/速度/位置）整定 + Studio 上位机会话
+examples/       01 FocKit_commissioning（冻结·回归测试台，SPEC-P §2）：电压力矩冒烟 + 三环（电流/速度/位置）整定 + Studio 上位机会话
+                02 FocKit_force_ctrl（P2 力控，已立项待建，SPEC-P §3 / REF-14）：重力补偿 + 阻抗控制 demo
 docs/           分层文档库（00_文档总览 为入口：需求/架构/验收合同/硬件档案/详细设计/验证记录）
 ```
 
@@ -51,7 +52,7 @@ docs/           分层文档库（00_文档总览 为入口：需求/架构/验�
 | 项 | 值 |
 |---|---|
 | 板 | DengFOC V4（ESP32-WROOM-32U 双路） |
-| 电机 | 2208-80T 云台电机，7 对极，8.25Ω 相阻，4.25mH 相感，100KV，KT≈0.0827 N·m/A，持续 0.2~0.5A |
+| 电机 | 2208-80T 云台电机，7 对极，8.25Ω 相阻，4.25mH 相感，KV_eff≈300（实测），KT=0.032 N·m/A（2026-09-21 四点定标实测；公式初值 0.0827 废弃），持续 0.2~0.5A |
 | 编码器 | AS5600 ×2（I2C 双总线：M0=19/18，M1=23/5） |
 | 引脚 | M0 相线 32/33/25，M1 相线 26/27/14，使能 12，VIN 检测 13 |
 
