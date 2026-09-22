@@ -28,7 +28,7 @@ src/
 ├── persist/    CalibrationStore（NVS 标定固化，对标 STM32 Flash 双页）
 └── hmi/        SerialShell（串口调参命令行）
 examples/       01 FocKit_commissioning（冻结·回归测试台，SPEC-P §2）：电压力矩冒烟 + 三环（电流/速度/位置）整定 + Studio 上位机会话
-                02 FocKit_force_ctrl（P2 力控，已立项待建，SPEC-P §3 / REF-14）：重力补偿 + 阻抗控制 demo
+                02 FocKit_force_ctrl（P2 力控，已立项待建，SPEC-P §3 / REF-14）：虚拟摆（力矩法）+ 阻抗控制 demo，裸电机手拨·学习导向
 docs/           分层文档库（00_文档总览 为入口：需求/架构/验收合同/硬件档案/详细设计/验证记录）
 ```
 
