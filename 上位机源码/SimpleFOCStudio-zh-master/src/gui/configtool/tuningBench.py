@@ -94,164 +94,12 @@ class PidCard(QtWidgets.QGroupBox):
         self.readBack()
 
 
-class ForceCard(QtWidgets.QGroupBox):
-    """力控参数卡（2026-09-22 二级方案落地，REF-14 §5；固件 = 02 号 FocKit_force_ctrl）。
-
-    - 模式按钮 raw/虚拟摆/阻抗 → 发 `mode ...`；
-    - 六参数 Gv/θ0/K/D/θ*/tq 写入 → 逐条下发；回显解析 [FC CFG] 行显示固件存储值
-      ——写入必读回进 UI（EXP-04：界面输入值不作数，回显值才算数）；
-    - 读回按钮 → 发 `pred`（固件附带 [FC CFG] 全参数行 + [FC PRED] 预测量三行）；
-    - 探针周期 → `probe <ms>` / `probe off`（[FC DBG] 是判据量化的时基锚点）；
-    - [FC DBG] 探针行解析 → 卡底实时读数 θ/θ̇/Iq/τ_cmd；
-    - 命令全部走 shell 小写命令面：固件 ForceSession 在 Studio 会话期放行小写行
-      （上位机协议字母全大写，判别无歧义）。
-    """
-
-    # (命令字, 标签, 默认值=REF-14 §3 定档)
-    PARAMS = [
-        ('gv', 'Gv (N·m)', '0.005'),
-        ('th0', 'θ0 (rad)', '0'),
-        ('kk', 'K (N·m/rad)', '0.00254'),
-        ('kd', 'D (N·m·s/rad)', '0.000203'),
-        ('tp', 'θ* (rad)', '0'),
-        ('tq', 'tq (N·m)', '0'),
-    ]
-    MODES = [('raw', 'raw 裸力矩'), ('pend', '虚拟摆'), ('imp', '阻抗')]
-
-    def __init__(self, device, parent=None):
-        super().__init__('力控（02 号 FocKit_force_ctrl）', parent)
-        self.device = device
-        self.grid = QtWidgets.QGridLayout(self)
-
-        # 模式行（互斥三钮 + 固件模式回显）
-        self.modeButtons = {}
-        for col, (key, text) in enumerate(self.MODES):
-            btn = QtWidgets.QPushButton(text)
-            btn.setCheckable(True)
-            btn.setToolTip('mode %s' % key)
-            btn.clicked.connect(lambda checked, k=key: self.onModeButton(k))
-            self.modeButtons[key] = btn
-            self.grid.addWidget(btn, 0, col)
-        self.modeEcho = QtWidgets.QLabel('固件模式：—')
-        self.grid.addWidget(self.modeEcho, 0, 3, 1, 3)
-
-        # 参数字段（两行三列：label+edit 成对）
-        self.fields = {}
-        for idx, (key, label, default) in enumerate(self.PARAMS):
-            row, col = 1 + idx // 3, (idx % 3) * 2
-            self.grid.addWidget(QtWidgets.QLabel(label), row, col)
-            edit = QtWidgets.QLineEdit(default)
-            edit.setMinimumWidth(64)
-            edit.setToolTip(key)
-            self.fields[key] = edit
-            self.grid.addWidget(edit, row, col + 1)
-
-        # 写入 / 读回
-        self.writeButton = QtWidgets.QPushButton('写入')
-        self.writeButton.setIcon(GUIToolKit.getIconByName('push'))
-        self.writeButton.clicked.connect(self.write)
-        self.grid.addWidget(self.writeButton, 3, 0, 1, 2)
-        self.readButton = QtWidgets.QPushButton('读回')
-        self.readButton.setIcon(GUIToolKit.getIconByName('pull'))
-        self.readButton.clicked.connect(lambda: self.send('pred'))
-        self.grid.addWidget(self.readButton, 3, 2, 1, 2)
-
-        # 探针周期（时基锚点，EXP-06 纪律）
-        self.grid.addWidget(QtWidgets.QLabel('探针(ms)'), 3, 4)
-        self.probeInput = QtWidgets.QLineEdit('50')
-        self.probeInput.setMinimumWidth(48)
-        self.grid.addWidget(self.probeInput, 3, 5)
-        self.probeSet = QtWidgets.QPushButton('设置')
-        self.probeSet.clicked.connect(self.onProbeSet)
-        self.grid.addWidget(self.probeSet, 4, 0, 1, 2)
-        self.probeOff = QtWidgets.QPushButton('关闭')
-        self.probeOff.clicked.connect(lambda: self.send('probe off'))
-        self.grid.addWidget(self.probeOff, 4, 2, 1, 2)
-
-        # 回显状态（写入必读回的显示面；绿 = 回显已到达 = 写入落地证据）
-        self.echoLabel = QtWidgets.QLabel('固件存储：—（写入/读回后刷新）')
-        self.echoLabel.setStyleSheet('color:#888;')
-        self.grid.addWidget(self.echoLabel, 5, 0, 1, 6)
-
-        # [FC DBG] 实时读数行
-        self.liveLabel = QtWidgets.QLabel('θ — · θ̇ — · Iq — · τcmd —')
-        liveFont = self.liveLabel.font()
-        liveFont.setBold(True)
-        self.liveLabel.setFont(liveFont)
-        self.grid.addWidget(self.liveLabel, 6, 0, 1, 6)
-
-        # 串口行监听：commandDataReceived 多播信号（[FC CFG]/[FC DBG] 落此通道，
-        # 与命令行页/树视图并行接收互不干扰）
-        self.device.commProvider.commandDataReceived.connect(self.onLine)
-
-    def send(self, text):
-        if self.device.isConnected:
-            self.device.sendCommand(text)
-
-    def onModeButton(self, key):
-        for k, btn in self.modeButtons.items():
-            btn.setChecked(k == key)
-        self.send('mode ' + key)
-
-    def onProbeSet(self):
-        try:
-            ms = int(float(self.probeInput.text()))
-        except ValueError:
-            QtWidgets.QMessageBox.warning(None, '探针', '探针周期必须是数字(ms)。')
-            return
-        self.send('probe %d' % ms)
-
-    def write(self):
-        for key, _label, _default in self.PARAMS:
-            self.send('%s %s' % (key, self.fields[key].text().strip()))
-        # 写入是否落地由回显通道自动确认（[FC CFG] 行到达即刷新 echoLabel）
-
-    def onLine(self, line):
-        if line.startswith('[FC CFG]'):
-            self._onCfgEcho(line[len('[FC CFG]'):].strip())
-        elif line.startswith('[FC DBG]'):
-            self._onDbg(line[len('[FC DBG]'):].strip())
-
-    @staticmethod
-    def _parseKv(body):
-        values = {}
-        for token in body.split():
-            if '=' in token:
-                k, v = token.split('=', 1)
-                values[k] = v
-        return values
-
-    def _onCfgEcho(self, body):
-        values = self._parseKv(body)
-        mode = values.get('mode')
-        if mode:
-            for k, btn in self.modeButtons.items():
-                btn.setChecked(k == mode)
-            self.modeEcho.setText('固件模式：%s' % mode)
-        shown = ' '.join('%s=%s' % (k, values[k]) for k in
-                         ('gv', 'th0', 'k', 'd', 'tp', 'tq', 'probe') if k in values)
-        self.echoLabel.setText('固件存储：%s' % (shown or '—'))
-        self.echoLabel.setStyleSheet('color:#2e7d32;')
-
-    def _onDbg(self, body):
-        values = self._parseKv(body)
-
-        def g(key):
-            try:
-                return float(values[key])
-            except (KeyError, ValueError):
-                return None
-
-        def fmt(v, spec):
-            return '—' if v is None else spec % v
-
-        self.liveLabel.setText('θ %s · θ̇ %s · Iq %s · τcmd %s' % (
-            fmt(g('th'), '%.3f'), fmt(g('sv'), '%.3f'),
-            fmt(g('iq'), '%.4f'), fmt(g('tc'), '%.4f')))
-
-
 class TuningBenchWidget(WorkAreaTabWidget):
-    """整定台：连接条 + 环预设（三环+力控）+ 大波形 + 参数卡 + 目标阶跃 + 大字号读数。"""
+    """整定台：连接条 + 环预设（三环）+ 大波形 + 参数卡 + 目标阶跃 + 大字号读数。
+
+    力控 2026-09-23 起独立成页（forceBench.py 力控台）：命令面（小写 shell）与
+    曲线源（[FC DBG] 探针行）均与三环不同，不再混排本页。
+    """
 
     # 环预设表：力矩类型/控制模式/曲线变量勾选（顺序 Target,Vq,Vd,Cq,Cd,Vel,Angle）
     # /降采样/目标单位/默认幅值/红线（电流环 0.5A、力控 0.5A=Iq 域）/参数卡/判据响应通道
@@ -268,14 +116,9 @@ class TuningBenchWidget(WorkAreaTabWidget):
                          vars=[True, False, False, False, False, True, True],
                          downsample=100, unit='rad', default=1.5708, redline=None,
                          cards=('position',), response=6),
-        # 力控（2026-09-22 二级落地，REF-14 §5）：固件 02 号 FocKit_force_ctrl。
-        # 命令走小写 shell 面（固件 ForceSession 会话期放行），不走 MT/MC 参数卡；
-        # 曲线取 Cq(Iq mA)/Vel/Angle（Iq=电流即力传感器）；原生 target 在力控固件
-        # =力律输出的 Iq 指令(A)，故目标单位 A、红线同 0.5A；判据响应通道=Angle。
-        'force': dict(title='力控', torque=2, motion=0,
-                      vars=[True, False, False, True, False, True, True],
-                      downsample=100, unit='A', default=0.0, redline=0.5,
-                      cards=('force',), response=6),
+        # 力控预设已删（2026-09-23）：独立成 forceBench.py 力控台页——力控固件走
+        # 电压力矩模式，Monitor 流 Cq 恒 0、target 为伏特非安培，曲线源改吃
+        # [FC DBG] 探针行，与三环 Monitor 流分道（REF-14 §5）。
     }
 
     def __init__(self, parent=None):
@@ -313,14 +156,13 @@ class TuningBenchWidget(WorkAreaTabWidget):
         self.sideColumn = QtWidgets.QWidget()
         self.sideLayout = QtWidgets.QVBoxLayout(self.sideColumn)
 
-        # 参数卡堆：按环显隐（电流环 Q/D 两张，速度/位置各一张，力控一张 ForceCard）
+        # 参数卡堆：按环显隐（电流环 Q/D 两张，速度/位置各一张）
         d_ = self.device
         self.pidCards = {
             'velocity': PidCard('速度环 PID', d_, d_.PIDVelocity, d_.LPFVelocity),
             'position': PidCard('位置环 P', d_, d_.PIDAngle, d_.LPFAngle),
             'currentQ': PidCard('电流 Q 轴 PID（目标即页面目标）', d_, d_.PIDCurrentQ, d_.LPFCurrentQ),
             'currentD': PidCard('电流 D 轴 PID（目标恒 0）', d_, d_.PIDCurrentD, d_.LPFCurrentD),
-            'force': ForceCard(d_),
         }
         # D 轴目标由库硬性固定为 0（BLDCMotor::loopFOC 的 foc_current 分支：
         # PID_current_d(-current.d)，正交无弱磁）——D 轴只整定抑制增益
@@ -477,19 +319,15 @@ class TuningBenchWidget(WorkAreaTabWidget):
         for cardKey, card in self.pidCards.items():
             card.setVisible(cardKey in cfg['cards'])
         self.unitLabel.setText(cfg['unit'])
-        # 电流环/力控目标是 Q 轴电流（foc_current 力矩模式 target=Iq；D 轴由库恒 0；
-        # 力控固件下 target=力律逐拍重发的 Iq 指令——读数区可直接看力律在想什么）
+        # 电流环目标是 Q 轴电流（foc_current 力矩模式 target=Iq；D 轴由库恒 0）
         self.readoutCaptions['target'].setText(
-            'Iq目标 (A)' if key in ('current', 'force')
+            'Iq目标 (A)' if key == 'current'
             else '目标 (%s)' % cfg['unit'])
         self.targetInput.setText(str(cfg['default']))
         self._updateTargetGuard()
         # ⑦ 未开流则自动开流（开流动作会再发一遍 MMD+MMS，幂等）
         if g.currentStatus is g.initialConnectedState:
             panel.startStoPlotAction()
-        # 力控卡激活即拉一轮参数与预测量回显（pred 附带 [FC CFG] 全参数行）
-        if key == 'force':
-            d_.sendCommand('pred')
         return True
 
     # ── 目标 / 使能 ────────────────────────────────────────
@@ -624,4 +462,4 @@ class TuningBenchWidget(WorkAreaTabWidget):
         return GUIToolKit.getIconByName('loop')
 
     def getTabName(self):
-        return '整定台'  # 2026-09-22 起含力控（三环 + 力控一页）
+        return '整定台'  # 纯三环；力控 2026-09-23 起独立力控台页

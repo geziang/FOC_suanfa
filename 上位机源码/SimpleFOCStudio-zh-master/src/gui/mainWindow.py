@@ -39,9 +39,12 @@ class UserInteractionMainWindow(object):
 
         # FocKit 绑定（2026-09-20）：启动自动开页，免「文件 → 打开设备」。
         # 默认第一页 = 三环整定台（使用面浓缩的工作页，REF-13）；
+        # 第二页 = 力控台（2026-09-23 独立成页：曲线源吃 [FC DBG] 探针行，
+        # 与三环 Monitor 流分道，REF-14 §5）；
         # 设备页随后（全功能后盾：全景参数/树形视图）。链路参数已写死，
         # 整定台的主路径操作 = "选端口 + 点连接 + 点环"。
         self.tabbedToolsWidget.addTuningBench()
+        self.tabbedToolsWidget.addForceBench()
         self.tabbedToolsWidget.addDeviceForm()
         self.tabbedToolsWidget.setCurrentIndex(0)
 

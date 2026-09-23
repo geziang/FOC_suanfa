@@ -8,6 +8,7 @@ from PyQt5 import QtWidgets
 
 from src.gui.commandlinetool.commandlinetool import CommandLineConsoleTool
 from src.gui.configtool.deviceConfigurationTool import DeviceConfigurationTool
+from src.gui.configtool.forceBench import ForceBenchWidget
 from src.gui.configtool.generatedCodeDisplay import GeneratedCodeDisplay
 from src.gui.configtool.treeViewConfigTool import TreeViewConfigTool
 from src.gui.configtool.tuningBench import TuningBenchWidget
@@ -29,6 +30,7 @@ class WorkAreaTabbedWidget(QtWidgets.QTabWidget):
         self.cmdLineTool = None
         self.configDeviceTool = None
         self.tuningBenchTool = None
+        self.forceBenchTool = None
         self.generatedCodeTab = None
         self.activeToolsList = []
 
@@ -48,6 +50,8 @@ class WorkAreaTabbedWidget(QtWidgets.QTabWidget):
             self.configDeviceTool = None
         if type(self.currentWidget()) == TuningBenchWidget:
             self.tuningBenchTool = None
+        if type(self.currentWidget()) == ForceBenchWidget:
+            self.forceBenchTool = None
         if type(self.currentWidget()) == GeneratedCodeDisplay:
             self.generatedCodeTab = None
         if self.configDeviceTool == None and self.cmdLineTool == None:
@@ -71,6 +75,22 @@ class WorkAreaTabbedWidget(QtWidgets.QTabWidget):
             self.activeToolsList.append(self.tuningBenchTool)
             self.addTab(self.tuningBenchTool,
                         self.tuningBenchTool.getTabIcon(), '三环整定')
+            self.setCurrentIndex(self.currentIndex() + 1)
+
+    def addForceBench(self):
+        """力控台（2026-09-23）：独立力控工作页，见 forceBench.py / REF-14 §5。"""
+        trace('[UI] addForceBench clicked; existing=%r', self.forceBenchTool is not None)
+        if self.forceBenchTool is None:
+            try:
+                trace('[UI] addForceBench constructing ForceBenchWidget')
+                self.forceBenchTool = ForceBenchWidget()
+                trace('[UI] addForceBench ForceBenchWidget constructed')
+            except Exception as exception:
+                trace_exception('addForceBench', exception)
+                raise
+            self.activeToolsList.append(self.forceBenchTool)
+            self.addTab(self.forceBenchTool,
+                        self.forceBenchTool.getTabIcon(), '力控')
             self.setCurrentIndex(self.currentIndex() + 1)
 
     def addDeviceForm(self):
