@@ -10,8 +10,8 @@
 - 与三环整定台分开：命令面（小写 shell）与曲线源（探针行）都与三环不同，
   混排一页容易误切环/误读曲线。
 
-布局：连接条 + 大波形（上=机械量 θ/θ̇，下=力量 τ/Iq 双纵轴）+ ForceCard
-（模式三钮 / 六参数写入读回 / 探针周期 / 实时读数）。
+布局：连接条 + 大波形（上=机械量 θ/θ*、下=力量 τ/Iq 双纵轴）+ ForceCard
+（模式五钮 / 十二参数写入读回 / 探针周期 / 实时读数）。
 """
 import csv
 import io
@@ -32,17 +32,18 @@ from src.debugTrace import trace
 class ForceCard(QtWidgets.QGroupBox):
     """力控参数卡（2026-09-22 二级方案落地，2026-09-23 迁入力控台；固件 = 02 号）。
 
-    - 模式按钮 raw/虚拟摆/阻抗 → 发 `mode ...`；
-    - 六参数 Gv/θ0/K/D/θ*/tq 写入 → 逐条下发；回显解析 [FC CFG] 行显示固件存储值
+    - 模式按钮 raw/虚拟摆/阻抗/虚拟墙/柔顺轨迹 → 发 `mode ...`（五模式，REF-14 §6）；
+    - 十二参数（摆 Gv/θ0、阻抗 K/D/θ*、raw tq、墙 Kw/θwall/Dw、轨迹 A/ω*/a）
+      写入 → 逐条下发；回显解析 [FC CFG] 行显示固件存储值
       ——写入必读回进 UI（EXP-04：界面输入值不作数，回显值才算数）；
-    - 读回按钮 → 发 `pred`（固件附带 [FC CFG] 全参数行 + [FC PRED] 预测量三行）；
+    - 读回按钮 → 发 `pred`（固件附带 [FC CFG] 全参数行 + [FC PRED] 预测量六行）；
     - 探针周期 → `probe <ms>` / `probe off`（[FC DBG] 是判据量化的时基锚点）；
-    - [FC DBG] 探针行解析 → 卡底实时读数 θ/θ̇/Iq/τ_cmd；
+    - [FC DBG] 探针行解析 → 卡底实时读数 θ/θ̇/θ*/Iq/τ_cmd；
     - 命令全部走 shell 小写命令面：固件 ForceSession 在 Studio 会话期放行小写行
       （上位机协议字母全大写，判别无歧义）。
     """
 
-    # (命令字, 标签, 默认值=REF-14 §3 定档)
+    # (命令字, 标签, 默认值=REF-14 §3/§4 定档)
     PARAMS = [
         ('gv', 'Gv (N·m)', '0.005'),
         ('th0', 'θ0 (rad)', '0'),
@@ -50,15 +51,22 @@ class ForceCard(QtWidgets.QGroupBox):
         ('kd', 'D (N·m·s/rad)', '0.000203'),
         ('tp', 'θ* (rad)', '0'),
         ('tq', 'tq (N·m)', '0'),
+        ('kw', 'Kw (N·m/rad)', '0.00254'),
+        ('thw', 'θwall (rad)', '1.5708'),
+        ('dw', 'Dw (N·m·s/rad)', '0'),
+        ('ta', 'A± (rad)', '1.5708'),
+        ('tv', 'ω* (rad/s)', '0.5'),
+        ('ac', 'a (rad/s²)', '2'),
     ]
-    MODES = [('raw', 'raw 裸力矩'), ('pend', '虚拟摆'), ('imp', '阻抗')]
+    MODES = [('raw', 'raw 裸力矩'), ('pend', '虚拟摆'), ('imp', '阻抗'),
+             ('wall', '虚拟墙'), ('traj', '柔顺轨迹')]
 
     def __init__(self, device, parent=None):
         super().__init__('力控参数（02 号 FocKit_force_ctrl）', parent)
         self.device = device
         self.grid = QtWidgets.QGridLayout(self)
 
-        # 模式行（互斥三钮 + 固件模式回显）
+        # 模式行（互斥五钮 + 固件模式回显）
         self.modeButtons = {}
         for col, (key, text) in enumerate(self.MODES):
             btn = QtWidgets.QPushButton(text)
@@ -68,9 +76,9 @@ class ForceCard(QtWidgets.QGroupBox):
             self.modeButtons[key] = btn
             self.grid.addWidget(btn, 0, col)
         self.modeEcho = QtWidgets.QLabel('固件模式：—')
-        self.grid.addWidget(self.modeEcho, 0, 3, 1, 3)
+        self.grid.addWidget(self.modeEcho, 0, len(self.MODES), 1, 1)
 
-        # 参数字段（两行三列：label+edit 成对）
+        # 参数字段（四行三列：label+edit 成对）
         self.fields = {}
         for idx, (key, label, default) in enumerate(self.PARAMS):
             row, col = 1 + idx // 3, (idx % 3) * 2
@@ -85,35 +93,35 @@ class ForceCard(QtWidgets.QGroupBox):
         self.writeButton = QtWidgets.QPushButton('写入')
         self.writeButton.setIcon(GUIToolKit.getIconByName('push'))
         self.writeButton.clicked.connect(self.write)
-        self.grid.addWidget(self.writeButton, 3, 0, 1, 2)
+        self.grid.addWidget(self.writeButton, 5, 0, 1, 2)
         self.readButton = QtWidgets.QPushButton('读回')
         self.readButton.setIcon(GUIToolKit.getIconByName('pull'))
         self.readButton.clicked.connect(lambda: self.send('pred'))
-        self.grid.addWidget(self.readButton, 3, 2, 1, 2)
+        self.grid.addWidget(self.readButton, 5, 2, 1, 2)
 
         # 探针周期（时基锚点，EXP-06 纪律）
-        self.grid.addWidget(QtWidgets.QLabel('探针(ms)'), 3, 4)
+        self.grid.addWidget(QtWidgets.QLabel('探针(ms)'), 5, 4)
         self.probeInput = QtWidgets.QLineEdit('50')
         self.probeInput.setMinimumWidth(48)
-        self.grid.addWidget(self.probeInput, 3, 5)
+        self.grid.addWidget(self.probeInput, 5, 5)
         self.probeSet = QtWidgets.QPushButton('设置')
         self.probeSet.clicked.connect(self.onProbeSet)
-        self.grid.addWidget(self.probeSet, 4, 0, 1, 2)
+        self.grid.addWidget(self.probeSet, 6, 0, 1, 2)
         self.probeOff = QtWidgets.QPushButton('关闭')
         self.probeOff.clicked.connect(lambda: self.send('probe off'))
-        self.grid.addWidget(self.probeOff, 4, 2, 1, 2)
+        self.grid.addWidget(self.probeOff, 6, 2, 1, 2)
 
         # 回显状态（写入必读回的显示面；绿 = 回显已到达 = 写入落地证据）
         self.echoLabel = QtWidgets.QLabel('固件存储：—（写入/读回后刷新）')
         self.echoLabel.setStyleSheet('color:#888;')
-        self.grid.addWidget(self.echoLabel, 5, 0, 1, 6)
+        self.grid.addWidget(self.echoLabel, 7, 0, 1, 6)
 
         # [FC DBG] 实时读数行
-        self.liveLabel = QtWidgets.QLabel('θ — · θ̇ — · Iq — · τcmd —')
+        self.liveLabel = QtWidgets.QLabel('θ — · θ̇ — · θ* — · Iq — · τcmd —')
         liveFont = self.liveLabel.font()
         liveFont.setBold(True)
         self.liveLabel.setFont(liveFont)
-        self.grid.addWidget(self.liveLabel, 6, 0, 1, 6)
+        self.grid.addWidget(self.liveLabel, 8, 0, 1, 6)
 
         # 串口行监听：commandDataReceived 多播信号（[FC CFG]/[FC DBG] 落此通道，
         # 与命令行页/树视图/本页波形并行接收互不干扰）
@@ -163,9 +171,12 @@ class ForceCard(QtWidgets.QGroupBox):
             for k, btn in self.modeButtons.items():
                 btn.setChecked(k == mode)
             self.modeEcho.setText('固件模式：%s' % mode)
-        shown = ' '.join('%s=%s' % (k, values[k]) for k in
+        # 十二参数一行放不下 → 富文本两行（摆/阻抗/raw + 墙/轨迹）
+        line1 = ' '.join('%s=%s' % (k, values[k]) for k in
                          ('gv', 'th0', 'k', 'd', 'tp', 'tq', 'probe') if k in values)
-        self.echoLabel.setText('固件存储：%s' % (shown or '—'))
+        line2 = ' '.join('%s=%s' % (k, values[k]) for k in
+                         ('kw', 'thw', 'dw', 'ta', 'tv', 'ac') if k in values)
+        self.echoLabel.setText('固件存储：%s<br>%s' % (line1 or '—', line2))
         self.echoLabel.setStyleSheet('color:#2e7d32;')
 
     def _onDbg(self, body):
@@ -180,15 +191,16 @@ class ForceCard(QtWidgets.QGroupBox):
         def fmt(v, spec):
             return '—' if v is None else spec % v
 
-        self.liveLabel.setText('θ %s · θ̇ %s · Iq %s · τcmd %s' % (
-            fmt(g('th'), '%.3f'), fmt(g('sv'), '%.3f'),
+        self.liveLabel.setText('θ %s · θ̇ %s · θ* %s · Iq %s · τcmd %s' % (
+            fmt(g('th'), '%.3f'), fmt(g('sv'), '%.3f'), fmt(g('tp'), '%.3f'),
             fmt(g('iq'), '%.4f'), fmt(g('tc'), '%.4f')))
 
 
 class ForceScope(QtWidgets.QGroupBox):
     """力控波形区：直接解析 [FC DBG] 探针行（判据量的原生通道）。
 
-    - 上图「机械量」：θ (rad) 绿 / θ̇ (rad/s) 橙，共纵轴；
+    - 上图「机械量」：θ (rad) 绿 / θ* (rad) 紫虚线 / θ̇ (rad/s) 橙，共纵轴——
+      θ* 与 θ 同轴对照即 T-P2-5③"无目标跳变"的直读验证（wall 模式下即墙位 θ_wall）；
     - 下图「力量」：τ_cmd (N·m) 红（左轴）+ Iq (A) 蓝（右轴，双 ViewBox）——
       电压模式下 Iq=τ/KT 为账面值，与 τ 同源共线，双轴只为刻度各自可读；
     - 时基 = 固件探针行的 ms 字段（换算秒，首行归零）；ms 回退视为固件复位，
@@ -199,9 +211,10 @@ class ForceScope(QtWidgets.QGroupBox):
     """
 
     MAX_POINTS = 6000
-    # (字段名, 显示名, 颜色) —— 与整定台读数配色习惯一致：绿/橙/红/蓝
+    # (字段名, 显示名, 颜色) —— 与整定台读数配色习惯一致：绿/橙/红/蓝，参考位=紫
     CURVES = [
         ('th', 'θ (rad)', '#43a047'),
+        ('tp', 'θ* (rad)', '#8e24aa'),
         ('sv', 'θ̇ (rad/s)', '#fb8c00'),
         ('tc', 'τ_cmd (N·m)', '#e53935'),
         ('iq', 'Iq (A)', '#1e88e5'),
@@ -255,11 +268,14 @@ class ForceScope(QtWidgets.QGroupBox):
         # 上下图 X 轴联动（缩放/平移同步看同一段）
         self.plotMech.setXLink(self.plotForce)
 
-        # 曲线对象：th/sv 归上图，tc 归下图左轴，iq 归下图右轴
+        # 曲线对象：th/tp/sv 归上图（tp=紫虚线参考位），tc 归下图左轴，iq 归下图右轴
         self.curves = {}
         for key, name, color in self.CURVES:
-            pen = pg.mkPen(color, width=2)
-            if key in ('th', 'sv'):
+            if key == 'tp':  # 参考位虚线：与 θ 实线同轴，一眼分清"目标 vs 实际"
+                pen = pg.mkPen(color, width=2, style=QtCore.Qt.DashLine)
+            else:
+                pen = pg.mkPen(color, width=2)
+            if key in ('th', 'tp', 'sv'):
                 curve = self.plotMech.plot(pen=pen, name=name)
             elif key == 'tc':
                 curve = p1.plot(pen=pen, name=name)
@@ -318,6 +334,7 @@ class ForceScope(QtWidgets.QGroupBox):
             row = {'ms': ms,
                    'mode': values.get('mode', ''),
                    'th': float(values['th']), 'sv': float(values['sv']),
+                   'tp': float(values.get('tp', 'nan')),  # 旧固件无此列 → nan=断线不画
                    'iq': float(values['iq']), 'tc': float(values['tc'])}
         except (KeyError, ValueError, TypeError):
             self.droppedRows += 1
@@ -391,8 +408,8 @@ class ForceScope(QtWidgets.QGroupBox):
     def exportCsv(self):
         """导出显示缓冲为 CSV（显示与记录同源；暂停态可导整段）。
 
-        列：sample, t_s, ms(固件), mode, th, sv, iq, tc —— mode 列标记力律切换
-        时刻，滞回/释放判据离线处理时按它分段。
+        列：sample, t_s, ms(固件), mode, th, tp, sv, iq, tc —— mode 列标记力律切换
+        时刻，滞回/释放判据离线处理时按它分段；tp 为参考位（θ*/θ_wall，T-P2-5③）。
         """
         if not self.bufT:
             QtWidgets.QMessageBox.information(
@@ -416,17 +433,18 @@ class ForceScope(QtWidgets.QGroupBox):
         msList = [t * 1000.0 + (self.t0Ms or 0.0) for t in self.bufT]
         sio = io.StringIO()
         writer = csv.writer(sio, lineterminator='\n')
-        writer.writerow(['sample', 't_s', 'ms', 'mode', 'th', 'sv', 'iq', 'tc'])
+        writer.writerow(['sample', 't_s', 'ms', 'mode', 'th', 'tp', 'sv', 'iq', 'tc'])
         for i in range(len(self.bufT)):
             writer.writerow([i, self.bufT[i], msList[i], self.bufMode[i],
-                             self.bufY['th'][i], self.bufY['sv'][i],
-                             self.bufY['iq'][i], self.bufY['tc'][i]])
+                             self.bufY['th'][i], self.bufY['tp'][i],
+                             self.bufY['sv'][i], self.bufY['iq'][i],
+                             self.bufY['tc'][i]])
         Path(path).write_text(sio.getvalue(), encoding='utf-8-sig')
         trace('[FORCE SCOPE] CSV exported path=%r points=%d dropped=%d',
               path, len(self.bufT), self.droppedRows)
         QtWidgets.QMessageBox.information(
             None, '导出CSV',
-            '已导出 %d 点 × 4 变量（丢弃行 %d）：\n%s' %
+            '已导出 %d 点 × 5 变量（丢弃行 %d）：\n%s' %
             (len(self.bufT), self.droppedRows, path))
 
     def _refreshStatus(self):
