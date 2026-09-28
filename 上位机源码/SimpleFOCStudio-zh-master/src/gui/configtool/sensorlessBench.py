@@ -7,8 +7,9 @@
 tho 观测器估计）+ dth 误差，同增益有感/无感曲线对照即验收判据载体。
 
 布局：连接条 + 双波形（上=角度对账 the/thc/tho + dth 右轴；下=速度 we/wo + iq 右轴）
-+ SensorlessCard（角度源/观测器/VF 启动/参数/三环会话/实时读数）。结构沿力控台
-forceBench 先例（2026-09-23 三级落地）。
++ SensorlessCard（v2 一键式，2026-09-29 简化：观测器二选一/速度/一键启动/参数/实时
+读数——原角度源·VF·切无感·三环会话·step·探针的手动流程收进 UI 状态机自动串联，
+固件命令面一字不改）。结构沿力控台 forceBench 先例（2026-09-23 三级落地）。
 """
 import csv
 import io
@@ -27,108 +28,97 @@ from src.debugTrace import trace
 
 
 class SensorlessCard(QtWidgets.QGroupBox):
-    """无感控制卡：角度源三态/观测器切换/VF 启动/观测器参数/三环会话/实时读数。
+    """无感控制卡（v2 一键式）：选观测器→一键启动→拧参数看波形。
 
-    - 命令全部走小写命令面（固件 SensorlessSession 会话期放行，同 02 号先例）；
-    - 回显解析 [SL CFG]/[SL ID] 行，绿=写入落地（EXP-04 写入必读回）；
-    - [SL DBG] 解析 → 卡底实时读数（dth 与锁定状态是核心健康量）。
+    - 一键启动把原手动流程收进 UI 状态机（固件零改动）：
+      ① `obs <选型>` + `vf <速度>` 开环起转（观测器并行收敛）；
+      ② 盯 [SL DBG] 探针 lk 连续 LOCK_STREAK 拍=1（50ms 探针≈250ms 稳锁）
+         → `src obs` 切真无感 → `loop v` 速度闭环（三环冻结档）→ `T <速度>`；
+      ③ 运行中「速度设定」只发 T（不重走流程）；「停止」按态收口（闭环 T 0 / VF 段 vf off）；
+    - 8s 未锁定 → 保持 VF 开环（观测器 VF 期间并行跑：改参数→写入→再点启动即重试）；
+    - 命令仍走小写命令面 + StudioBridge T（目标命令，与 Studio 滑条同路）；
+      [SL CFG] 回读驱动观测器按钮同步（EXP-04 写入必读回）；[SL DBG] 喂实时读数与状态机。
     """
+
+    LOCK_STREAK = 5         # 连续 lk=1 拍数（50ms 探针 ≈ 250ms 稳定锁定）
+    LOCK_TIMEOUT_MS = 8000  # VF 起转到锁定的等待上限
 
     def __init__(self, device, parent=None):
         super().__init__('无感控制（03 号 FocKit_sensorless）', parent)
         self.device = device
+
+        # 状态机：idle → vf_ramp →（lk 连续锁定）→ run；超时 → vf_open；停止 → stopped
+        self.state = 'idle'
+        self.speedValue = None
+        self.lkStreak = 0
+        self.lockTimer = QtCore.QTimer(self)
+        self.lockTimer.setSingleShot(True)
+        self.lockTimer.timeout.connect(self.onLockTimeout)
+
         self.grid = QtWidgets.QGridLayout(self)
 
-        # 角度源三态（互斥）
-        self.srcButtons = {}
-        for col, (key, text) in enumerate([('enc', 'enc 有感对照'),
-                                           ('vf', 'vf 开环启动'),
-                                           ('obs', 'obs 真无感')]):
-            btn = QtWidgets.QPushButton(text)
-            btn.setCheckable(True)
-            btn.setToolTip('src %s' % key)
-            btn.clicked.connect(lambda checked, k=key: self.onSrcButton(k))
-            self.srcButtons[key] = btn
-            self.grid.addWidget(btn, 0, col)
-        self.srcEcho = QtWidgets.QLabel('角度源：—')
-        self.grid.addWidget(self.srcEcho, 0, 3, 1, 2)
-
-        # 观测器切换
+        # 观测器二选一（矩阵战役核心：SMO+PLL × 磁链；运行中可热切看表现）
         self.obsButtons = {}
-        for col, (key, text) in enumerate([('smo', 'SMO+PLL'), ('flux', '磁链'),
-                                           ('off', 'off')]):
+        for col, (key, text) in enumerate([('smo', 'SMO+PLL'), ('flux', '磁链')]):
             btn = QtWidgets.QPushButton(text)
             btn.setCheckable(True)
             btn.setToolTip('obs %s' % key)
             btn.clicked.connect(lambda checked, k=key: self.onObsButton(k))
             self.obsButtons[key] = btn
-            self.grid.addWidget(btn, 1, col)
-        self.obsEcho = QtWidgets.QLabel('观测器：—')
-        self.grid.addWidget(self.obsEcho, 1, 3, 1, 2)
+            self.grid.addWidget(btn, 0, col)
+        self.obsButtons['smo'].setChecked(True)
+        self.obsEcho = QtWidgets.QLabel('观测器：smo')
+        self.grid.addWidget(self.obsEcho, 0, 2, 1, 3)
 
-        # VF 启动行
-        self.vfInput = QtWidgets.QLineEdit('10')
-        self.vfInput.setMinimumWidth(48)
-        self.grid.addWidget(QtWidgets.QLabel('VF(rads)'), 2, 0)
-        self.grid.addWidget(self.vfInput, 2, 1)
-        self.vfGo = QtWidgets.QPushButton('VF 启动')
-        self.vfGo.clicked.connect(self.onVfGo)
-        self.grid.addWidget(self.vfGo, 2, 2)
-        self.vfStop = QtWidgets.QPushButton('VF 停止')
-        self.vfStop.clicked.connect(lambda: self.send('vf off'))
-        self.grid.addWidget(self.vfStop, 2, 3)
-        self.srcObsBtn = QtWidgets.QPushButton('切无感(src obs)')
-        self.srcObsBtn.setToolTip('VF 转起来观测器锁定后点此切真无感')
-        self.srcObsBtn.clicked.connect(lambda: self.send('src obs'))
-        self.grid.addWidget(self.srcObsBtn, 2, 4)
+        # 速度 + 三键（唯一操作面：启动/调速/停止）
+        self.speedInput = QtWidgets.QLineEdit('10')
+        self.speedInput.setMinimumWidth(48)
+        self.grid.addWidget(QtWidgets.QLabel('速度(rad/s)'), 1, 0)
+        self.grid.addWidget(self.speedInput, 1, 1)
+        self.startButton = QtWidgets.QPushButton('▶ 一键启动')
+        self.startButton.clicked.connect(self.onStart)
+        self.grid.addWidget(self.startButton, 1, 2)
+        self.speedSetButton = QtWidgets.QPushButton('速度设定')
+        self.speedSetButton.clicked.connect(self.onSpeedSet)
+        self.grid.addWidget(self.speedSetButton, 1, 3)
+        self.stopButton = QtWidgets.QPushButton('■ 停止')
+        self.stopButton.clicked.connect(self.onStop)
+        self.grid.addWidget(self.stopButton, 1, 4)
 
-        # 观测器参数（SMO k/LPF、PLL、磁链漂移）
+        # 状态行（状态机走到哪步 + 失锁告警，随 [SL DBG] 自愈刷新）
+        self.stateLabel = QtWidgets.QLabel('状态：未启动')
+        stateFont = self.stateLabel.font()
+        stateFont.setBold(True)
+        self.stateLabel.setFont(stateFont)
+        self.grid.addWidget(self.stateLabel, 2, 0, 1, 5)
+
+        # 观测器参数（运行中写入即时生效——VF 并行收敛段正是拧参数看表现的场景）
         self.fields = {}
-        params = [('sk', 'SMO k(V)', '1.5'), ('st', 'LPF(ms)', '2'),
+        params = [('sk', '滑模k(V)', '1.5'), ('st', 'LPF(ms)', '2'),
                   ('sdkp', 'PLL kp', '100'), ('sdki', 'PLL ki', '2000'),
                   ('sd', '磁链Td(s)', '0.5')]
         for idx, (key, label, default) in enumerate(params):
-            row, col = 3 + idx // 5, (idx % 5) * 2
-            self.grid.addWidget(QtWidgets.QLabel(label), row, col)
+            col = (idx % 5) * 2
+            self.grid.addWidget(QtWidgets.QLabel(label), 3, col)
             edit = QtWidgets.QLineEdit(default)
-            edit.setMinimumWidth(56)
+            edit.setMinimumWidth(48)
             edit.setToolTip(key)
             self.fields[key] = edit
-            self.grid.addWidget(edit, row, col + 1)
+            self.grid.addWidget(edit, 3, col + 1)
         self.writeButton = QtWidgets.QPushButton('参数写入')
         self.writeButton.setIcon(GUIToolKit.getIconByName('push'))
         self.writeButton.clicked.connect(self.writeParams)
         self.grid.addWidget(self.writeButton, 4, 0, 1, 2)
 
-        # 三环会话 + step（同增益对照判据的载体）
-        for col, (key, text) in enumerate([('v', '速度环'), ('p', '位置环'),
-                                           ('t', '力矩'), ('o', 'Idle')]):
-            btn = QtWidgets.QPushButton(text)
-            btn.setToolTip('loop %s' % key)
-            btn.clicked.connect(lambda checked, k=key: self.send('loop ' + k))
-            self.grid.addWidget(btn, 5, col)
-        self.stepBtn = QtWidgets.QPushButton('step on/off')
-        self.stepBtn.clicked.connect(self.onStepToggle)
-        self.grid.addWidget(self.stepBtn, 5, 4)
-
-        # 探针周期
-        self.grid.addWidget(QtWidgets.QLabel('探针(ms)'), 6, 0)
-        self.probeInput = QtWidgets.QLineEdit('50')
-        self.probeInput.setMinimumWidth(48)
-        self.grid.addWidget(self.probeInput, 6, 1)
-        self.probeSet = QtWidgets.QPushButton('设置')
-        self.probeSet.clicked.connect(self.onProbeSet)
-        self.grid.addWidget(self.probeSet, 6, 2)
-
-        # 回显 + 实时读数
-        self.echoLabel = QtWidgets.QLabel('固件存储：—（写入后刷新）')
+        # 回读 + 实时读数（thc 控制链角看波形，卡上只留健康三量）
+        self.echoLabel = QtWidgets.QLabel('固件回读：—（写入后刷新）')
         self.echoLabel.setStyleSheet('color:#888;')
-        self.grid.addWidget(self.echoLabel, 7, 0, 1, 6)
-        self.liveLabel = QtWidgets.QLabel('the — · thc — · tho — · dth — · 锁 —')
+        self.grid.addWidget(self.echoLabel, 4, 2, 1, 4)
+        self.liveLabel = QtWidgets.QLabel('the — · tho — · dth — · 锁 —')
         liveFont = self.liveLabel.font()
         liveFont.setBold(True)
         self.liveLabel.setFont(liveFont)
-        self.grid.addWidget(self.liveLabel, 8, 0, 1, 6)
+        self.grid.addWidget(self.liveLabel, 5, 0, 1, 10)
 
         self.device.commProvider.commandDataReceived.connect(self.onLine)
 
@@ -136,40 +126,62 @@ class SensorlessCard(QtWidgets.QGroupBox):
         if self.device.isConnected:
             self.device.sendCommand(text)
 
-    def onSrcButton(self, key):
-        for k, btn in self.srcButtons.items():
-            btn.setChecked(k == key)
-        if key == 'vf':
-            self.onVfGo()          # vf 源由 vf 命令统一切入
-            return
-        self.send('src ' + key)
+    def readSpeed(self):
+        try:
+            v = float(self.speedInput.text().strip())
+        except ValueError:
+            QtWidgets.QMessageBox.warning(None, '速度', '目标速度必须是数字(rad/s)。')
+            return None
+        if not (0.1 <= v <= 40.0):
+            QtWidgets.QMessageBox.warning(
+                None, '速度', '目标速度范围 0.1~40 rad/s（低速盲区预算 ≈2.6，起步建议 ≥10）。')
+            return None
+        return v
 
     def onObsButton(self, key):
         for k, btn in self.obsButtons.items():
             btn.setChecked(k == key)
         self.send('obs ' + key)
 
-    def onVfGo(self):
-        try:
-            v = float(self.vfInput.text().strip())
-        except ValueError:
-            QtWidgets.QMessageBox.warning(None, 'VF', '目标速度必须是数字(rad/s)。')
+    def onStart(self):
+        v = self.readSpeed()
+        if v is None:
             return
-        for k, btn in self.srcButtons.items():
-            btn.setChecked(k == 'vf')
+        self.speedValue = v
+        obsKey = 'flux' if self.obsButtons['flux'].isChecked() else 'smo'
+        self.send('obs %s' % obsKey)
         self.send('vf %.3g' % v)
+        self.state = 'vf_ramp'
+        self.lkStreak = 0
+        self.lockTimer.start(self.LOCK_TIMEOUT_MS)
+        self._setState('状态：① VF 起转中…（观测器并行收敛，锁定后自动切无感+闭环）', '#e65100')
 
-    def onStepToggle(self):
-        self.send('step on' if not self.stepBtn.isChecked() else 'step off')
-        self.stepBtn.setChecked(not self.stepBtn.isChecked())
-
-    def onProbeSet(self):
-        try:
-            ms = int(float(self.probeInput.text()))
-        except ValueError:
-            QtWidgets.QMessageBox.warning(None, '探针', '探针周期必须是数字(ms)。')
+    def onLockTimeout(self):
+        if self.state != 'vf_ramp':
             return
-        self.send('probe %d' % ms)
+        self.state = 'vf_open'
+        self._setState('状态：⚠ 8s 未锁定——保持 VF 开环。改参数→写入→再点「一键启动」重试', '#c62828')
+
+    def onSpeedSet(self):
+        v = self.readSpeed()
+        if v is None:
+            return
+        self.speedValue = v
+        self.send('T %.3g' % v)
+
+    def onStop(self):
+        self.lockTimer.stop()
+        if self.state == 'run':
+            self.send('T 0')
+            self._setState('状态：已停止（T=0 减速中）', '#888')
+        elif self.state in ('vf_ramp', 'vf_open'):
+            self.send('vf off')
+            self._setState('状态：已停止（VF 减速中）', '#888')
+        else:
+            self.send('T 0')
+            self.send('vf off')
+            self._setState('状态：已停止', '#888')
+        self.state = 'stopped'
 
     def writeParams(self):
         get = lambda k: self.fields[k].text().strip()
@@ -178,20 +190,28 @@ class SensorlessCard(QtWidgets.QGroupBox):
         self.send('sp %s %s' % (get('sdkp'), get('sdki')))
         self.send('sd %s' % get('sd'))
 
+    def _setState(self, text, color):
+        self.stateLabel.setText(text)
+        self.stateLabel.setStyleSheet('color:%s;' % color)
+
+    def _engageClosedLoop(self):
+        self.lockTimer.stop()
+        self.send('src obs')
+        self.send('loop v')
+        self.send('T %.3g' % self.speedValue)
+        self.state = 'run'
+        self._setState('状态：③ 无感闭环中 @%g rad/s · 锁定✓' % self.speedValue, '#2e7d32')
+
     def onLine(self, line):
         if line.startswith('[SL CFG]'):
             body = line[len('[SL CFG]'):].strip()
-            self.echoLabel.setText('固件存储：%s' % body)
+            self.echoLabel.setText('固件回读：%s' % body)
             self.echoLabel.setStyleSheet('color:#2e7d32;')
             for token in body.split():
                 if '=' not in token:
                     continue
                 k, v = token.split('=', 1)
-                if k == 'src':
-                    for key, btn in self.srcButtons.items():
-                        btn.setChecked(key == v)
-                    self.srcEcho.setText('角度源：%s' % v)
-                elif k == 'obs':
+                if k == 'obs':
                     for key, btn in self.obsButtons.items():
                         btn.setChecked(key == v)
                     self.obsEcho.setText('观测器：%s' % v)
@@ -202,18 +222,31 @@ class SensorlessCard(QtWidgets.QGroupBox):
                     k, v = token.split('=', 1)
                     values[k] = v
 
-            def g(key):
-                try:
-                    return float(values[key])
-                except (KeyError, ValueError):
-                    return None
-
             def fmt(v, spec):
-                return '—' if v is None else spec % v
+                try:
+                    return '—' if v is None else spec % float(v)
+                except ValueError:
+                    return '—'
 
-            self.liveLabel.setText('the %s · thc %s · tho %s · dth %s · 锁 %s' % (
-                fmt(g('the'), '%.3f'), fmt(g('thc'), '%.3f'), fmt(g('tho'), '%.3f'),
-                fmt(g('dth'), '%+.3f'), values.get('lk', '—')))
+            self.liveLabel.setText('the %s · tho %s · dth %s · 锁 %s' % (
+                fmt(values.get('the'), '%.3f'), fmt(values.get('tho'), '%.3f'),
+                fmt(values.get('dth'), '%+.3f'), values.get('lk', '—')))
+
+            # 状态机喂养：VF 段数锁定拍；运行段随 lk 自愈刷新（失锁=低速盲区观测点）
+            if self.state == 'vf_ramp':
+                if values.get('lk') == '1':
+                    self.lkStreak += 1
+                    if self.lkStreak >= self.LOCK_STREAK:
+                        self._engageClosedLoop()
+                else:
+                    self.lkStreak = 0
+            elif self.state == 'run':
+                locked = values.get('lk') == '1'
+                self._setState(
+                    '状态：③ 无感闭环中 @%g rad/s · %s' % (
+                        self.speedValue if self.speedValue is not None else 0.0,
+                        '锁定✓' if locked else '⚠失锁(lk=0)'),
+                    '#2e7d32' if locked else '#c62828')
 
 
 class SensorlessScope(QtWidgets.QGroupBox):
