@@ -35,7 +35,8 @@
 //                                 软启动，θ* 无跳变）
 //   gv|th0|kk|kd|tp|tq <值>  在线调参（Gv/θ0/K/D/θ*/裸力矩），写入即回显读回值
 //   kw|thw|dw|ta|tv|ac <值>  墙参数（K_w/θ_wall/D_w）与轨迹参数（幅值A/巡航ω*/加速度）
-//   chirp <A_Nm> <f0_Hz> <f1_Hz> <T_s>  P3 辨识激励：武装扫频（自动切 id 模式；
+//   chirp <A_Nm> <f0_Hz> <f1_Hz> <T_s>  P3 辨识激励：武装扫频（自动切 id 模式＋探针自动
+//                                 10ms、结束/中止恢复原值——采样密度与激励绑死，不靠人工；
 //                                 f1 硬顶 15Hz≈0.75·ωc/2π，激励须≪力矩通道带宽；chirp off 中止）
 //   拟合：上位机力控台"辨识拟合"按钮（identFit.py：冲量法×微分法双估计，绕开 θ̈ 双差分噪声）
 //   pred                重打印预测量计算链
@@ -128,6 +129,10 @@ struct TrajGen {
 };
 TrajGen trajGen;
 
+// —— chirp 探针自动密度（防呆：两轮 50ms 废采教训；函数定义在探针区，见下）——
+void probeArmForChirp();       // 武装：探针自动切 10ms（辨识采样下限密度）
+void probeRestoreAfterChirp(); // 结束/中止：恢复武装前原值
+
 // ========== P3 辨识激励发生器（id 模式：raw 基值 + chirp 扫频，SPEC-P §4） ==========
 // 激励频窗设计：f1 硬顶 0.75·ωc/2π≈15Hz（力矩通道带宽 ωc=125 rad/s 之下留裕度，
 // 激励频率必须≪通道带宽，扫出去的才是机械特性而非通道特性）；默认 A=4mN·m≈4×τf 破摩死区。
@@ -157,6 +162,7 @@ struct IdGen {
     if (t >= dur) {
       active = false;
       Serial.println(F("[FC ID] chirp done"));
+      probeRestoreAfterChirp();   // 探针恢复武装前原值（自动归零路径）
       return 0.0f;
     }
     float f = f0 + (f1 - f0) * (t / dur);
@@ -185,6 +191,31 @@ const char* fcModeName(FcMode m) {
 uint32_t probePeriodMs = 50;   // 摆频 5.6Hz 需 ≥10 点/周期 → ≤18ms；50ms 日常够用，精细判读调小
 bool probeOn = true;
 uint32_t lastProbeMs = 0;
+// chirp 探针自动密度（2026-09-29 加）：武装即切 10ms、结束/中止恢复——采样密度与激励
+// 绑死，不再依赖人工/上位机设置（两轮 50ms 废采的教训）。运行中手动 probe 以手动为准，
+// 结束仍恢复武装前原值（恢复行打印，行为透明）。
+uint32_t savedProbeMs = 50;
+bool savedProbeOn = true;
+bool probeAutoArmed = false;
+void probeArmForChirp() {
+  if (!probeAutoArmed) {              // 重复武装不覆盖已存原值（连采场景）
+    savedProbeMs = probePeriodMs;
+    savedProbeOn = probeOn;
+    probeAutoArmed = true;
+  }
+  probePeriodMs = 10;                 // f1=10Hz 下 ≥10 点/周期的下限密度
+  probeOn = true;
+  Serial.printf("[FC ID] probe %lu%s → 10ms（自动，结束恢复）\n",
+                (unsigned long)savedProbeMs, savedProbeOn ? "ms" : " off");
+}
+void probeRestoreAfterChirp() {
+  if (!probeAutoArmed) return;
+  probeAutoArmed = false;
+  probePeriodMs = savedProbeMs;
+  probeOn = savedProbeOn;
+  Serial.printf("[FC ID] probe 恢复 %lu%s\n",
+                (unsigned long)savedProbeMs, savedProbeOn ? "ms" : " off");
+}
 
 // ========== 预测量计算链（计算优先：开机即算即打印，pred 重看） ==========
 void computePredictions() {
@@ -299,6 +330,7 @@ bool fcCommands(int argc, char* argv[]) {
     if (argc >= 2 && !strcmp(argv[1], "off")) {
       idGen.stop();
       Serial.println(F("[FC ID] chirp off"));
+      probeRestoreAfterChirp();       // 中止路径同样恢复探针
       return true;
     }
     if (argc >= 5) {
@@ -308,8 +340,9 @@ bool fcCommands(int argc, char* argv[]) {
         fcMode = FcMode::Id;
         Serial.println(F("[FC CFG] mode=id (chirp 自动切入)"));
       }
-      Serial.printf("[FC ID] armed A=%.4f N·m f=%.2f~%.2f Hz T=%.1fs（探针建议 10ms）\n",
+      Serial.printf("[FC ID] armed A=%.4f N·m f=%.2f~%.2f Hz T=%.1fs\n",
                     (double)idGen.amp, (double)idGen.f0, (double)idGen.f1, (double)idGen.dur);
+      probeArmForChirp();             // 探针自动 10ms（切换行紧跟 armed，来源留痕）
       computePredictions();
       return true;
     }
