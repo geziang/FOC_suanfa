@@ -20,8 +20,8 @@ import pyqtgraph as pg
 from PyQt5 import QtCore, QtWidgets
 
 from src.gui.configtool.connectionControl import ConnectionControlGroupBox
-from src.gui.sharedcomponets.sharedcomponets import (WorkAreaTabWidget,
-                                                     GUIToolKit)
+from src.gui.sharedcomnponets.sharedcomponets import (WorkAreaTabWidget,
+                                                      GUIToolKit)
 from src.simpleFOCConnector import SimpleFOCDevice
 from src.debugTrace import trace
 
