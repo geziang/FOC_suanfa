@@ -263,8 +263,10 @@ MotorLimits SimpleFocMotor::getLimits() { return limits_; }
 // ---- 无感战役扩展（2026-09-29）----
 void SimpleFocMotor::attachExternalSensor(Sensor* ext) {
   if (ext == nullptr) return;
+  // SimpleFOC Sensor::init() 为 protected（仅库内 motor.init 链可调）；
+  // 软件角度源（VF/观测器适配器）无硬件初始化需求，状态成员默认构造即就绪，
+  // 此处不做 init —— 首拍 getSensorAngle()/getVelocity() 自行收敛。
   extSensor_ = ext;
-  ext->init();                // SimpleFOC Sensor 协议：挂接前初始化（幂等）
   motor_.linkSensor(ext);     // velocity/position 模式路径即刻切换
   Serial.println(F("[EXP MOTOR] external angle source attached"));
 }
