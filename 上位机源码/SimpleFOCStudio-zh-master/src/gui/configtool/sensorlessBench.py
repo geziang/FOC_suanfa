@@ -1,0 +1,502 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""无感台（2026-09-29，无感观测器矩阵战役第一轮；固件 = 03 号 FocKit_sensorless）。
+
+对账架构（战役三条设计约束之一）：AS5600 降役为真值裁判——控制链吃观测器角度
+（真无感），本页波形吃 [SL DBG] 探针行的三列角度（the 编码器真值 / thc 控制链角 /
+tho 观测器估计）+ dth 误差，同增益有感/无感曲线对照即验收判据载体。
+
+布局：连接条 + 双波形（上=角度对账 the/thc/tho + dth 右轴；下=速度 we/wo + iq 右轴）
++ SensorlessCard（角度源/观测器/VF 启动/参数/三环会话/实时读数）。结构沿力控台
+forceBench 先例（2026-09-23 三级落地）。
+"""
+import csv
+import io
+import os
+import time
+from pathlib import Path
+
+import pyqtgraph as pg
+from PyQt5 import QtCore, QtWidgets
+
+from src.gui.configtool.connectionControl import ConnectionControlGroupBox
+from src.gui.sharedcomponets.sharedcomponets import (WorkAreaTabWidget,
+                                                     GUIToolKit)
+from src.simpleFOCConnector import SimpleFOCDevice
+from src.debugTrace import trace
+
+
+class SensorlessCard(QtWidgets.QGroupBox):
+    """无感控制卡：角度源三态/观测器切换/VF 启动/观测器参数/三环会话/实时读数。
+
+    - 命令全部走小写命令面（固件 SensorlessSession 会话期放行，同 02 号先例）；
+    - 回显解析 [SL CFG]/[SL ID] 行，绿=写入落地（EXP-04 写入必读回）；
+    - [SL DBG] 解析 → 卡底实时读数（dth 与锁定状态是核心健康量）。
+    """
+
+    def __init__(self, device, parent=None):
+        super().__init__('无感控制（03 号 FocKit_sensorless）', parent)
+        self.device = device
+        self.grid = QtWidgets.QGridLayout(self)
+
+        # 角度源三态（互斥）
+        self.srcButtons = {}
+        for col, (key, text) in enumerate([('enc', 'enc 有感对照'),
+                                           ('vf', 'vf 开环启动'),
+                                           ('obs', 'obs 真无感')]):
+            btn = QtWidgets.QPushButton(text)
+            btn.setCheckable(True)
+            btn.setToolTip('src %s' % key)
+            btn.clicked.connect(lambda checked, k=key: self.onSrcButton(k))
+            self.srcButtons[key] = btn
+            self.grid.addWidget(btn, 0, col)
+        self.srcEcho = QtWidgets.QLabel('角度源：—')
+        self.grid.addWidget(self.srcEcho, 0, 3, 1, 2)
+
+        # 观测器切换
+        self.obsButtons = {}
+        for col, (key, text) in enumerate([('smo', 'SMO+PLL'), ('flux', '磁链'),
+                                           ('off', 'off')]):
+            btn = QtWidgets.QPushButton(text)
+            btn.setCheckable(True)
+            btn.setToolTip('obs %s' % key)
+            btn.clicked.connect(lambda checked, k=key: self.onObsButton(k))
+            self.obsButtons[key] = btn
+            self.grid.addWidget(btn, 1, col)
+        self.obsEcho = QtWidgets.QLabel('观测器：—')
+        self.grid.addWidget(self.obsEcho, 1, 3, 1, 2)
+
+        # VF 启动行
+        self.vfInput = QtWidgets.QLineEdit('10')
+        self.vfInput.setMinimumWidth(48)
+        self.grid.addWidget(QtWidgets.QLabel('VF(rads)'), 2, 0)
+        self.grid.addWidget(self.vfInput, 2, 1)
+        self.vfGo = QtWidgets.QPushButton('VF 启动')
+        self.vfGo.clicked.connect(self.onVfGo)
+        self.grid.addWidget(self.vfGo, 2, 2)
+        self.vfStop = QtWidgets.QPushButton('VF 停止')
+        self.vfStop.clicked.connect(lambda: self.send('vf off'))
+        self.grid.addWidget(self.vfStop, 2, 3)
+        self.srcObsBtn = QtWidgets.QPushButton('切无感(src obs)')
+        self.srcObsBtn.setToolTip('VF 转起来观测器锁定后点此切真无感')
+        self.srcObsBtn.clicked.connect(lambda: self.send('src obs'))
+        self.grid.addWidget(self.srcObsBtn, 2, 4)
+
+        # 观测器参数（SMO k/LPF、PLL、磁链漂移）
+        self.fields = {}
+        params = [('sk', 'SMO k(V)', '1.5'), ('st', 'LPF(ms)', '2'),
+                  ('sdkp', 'PLL kp', '100'), ('sdki', 'PLL ki', '2000'),
+                  ('sd', '磁链Td(s)', '0.5')]
+        for idx, (key, label, default) in enumerate(params):
+            row, col = 3 + idx // 5, (idx % 5) * 2
+            self.grid.addWidget(QtWidgets.QLabel(label), row, col)
+            edit = QtWidgets.QLineEdit(default)
+            edit.setMinimumWidth(56)
+            edit.setToolTip(key)
+            self.fields[key] = edit
+            self.grid.addWidget(edit, row, col + 1)
+        self.writeButton = QtWidgets.QPushButton('参数写入')
+        self.writeButton.setIcon(GUIToolKit.getIconByName('push'))
+        self.writeButton.clicked.connect(self.writeParams)
+        self.grid.addWidget(self.writeButton, 4, 0, 1, 2)
+
+        # 三环会话 + step（同增益对照判据的载体）
+        for col, (key, text) in enumerate([('v', '速度环'), ('p', '位置环'),
+                                           ('t', '力矩'), ('o', 'Idle')]):
+            btn = QtWidgets.QPushButton(text)
+            btn.setToolTip('loop %s' % key)
+            btn.clicked.connect(lambda checked, k=key: self.send('loop ' + k))
+            self.grid.addWidget(btn, 5, col)
+        self.stepBtn = QtWidgets.QPushButton('step on/off')
+        self.stepBtn.clicked.connect(self.onStepToggle)
+        self.grid.addWidget(self.stepBtn, 5, 4)
+
+        # 探针周期
+        self.grid.addWidget(QtWidgets.QLabel('探针(ms)'), 6, 0)
+        self.probeInput = QtWidgets.QLineEdit('50')
+        self.probeInput.setMinimumWidth(48)
+        self.grid.addWidget(self.probeInput, 6, 1)
+        self.probeSet = QtWidgets.QPushButton('设置')
+        self.probeSet.clicked.connect(self.onProbeSet)
+        self.grid.addWidget(self.probeSet, 6, 2)
+
+        # 回显 + 实时读数
+        self.echoLabel = QtWidgets.QLabel('固件存储：—（写入后刷新）')
+        self.echoLabel.setStyleSheet('color:#888;')
+        self.grid.addWidget(self.echoLabel, 7, 0, 1, 6)
+        self.liveLabel = QtWidgets.QLabel('the — · thc — · tho — · dth — · 锁 —')
+        liveFont = self.liveLabel.font()
+        liveFont.setBold(True)
+        self.liveLabel.setFont(liveFont)
+        self.grid.addWidget(self.liveLabel, 8, 0, 1, 6)
+
+        self.device.commProvider.commandDataReceived.connect(self.onLine)
+
+    def send(self, text):
+        if self.device.isConnected:
+            self.device.sendCommand(text)
+
+    def onSrcButton(self, key):
+        for k, btn in self.srcButtons.items():
+            btn.setChecked(k == key)
+        if key == 'vf':
+            self.onVfGo()          # vf 源由 vf 命令统一切入
+            return
+        self.send('src ' + key)
+
+    def onObsButton(self, key):
+        for k, btn in self.obsButtons.items():
+            btn.setChecked(k == key)
+        self.send('obs ' + key)
+
+    def onVfGo(self):
+        try:
+            v = float(self.vfInput.text().strip())
+        except ValueError:
+            QtWidgets.QMessageBox.warning(None, 'VF', '目标速度必须是数字(rad/s)。')
+            return
+        for k, btn in self.srcButtons.items():
+            btn.setChecked(k == 'vf')
+        self.send('vf %.3g' % v)
+
+    def onStepToggle(self):
+        self.send('step on' if not self.stepBtn.isChecked() else 'step off')
+        self.stepBtn.setChecked(not self.stepBtn.isChecked())
+
+    def onProbeSet(self):
+        try:
+            ms = int(float(self.probeInput.text()))
+        except ValueError:
+            QtWidgets.QMessageBox.warning(None, '探针', '探针周期必须是数字(ms)。')
+            return
+        self.send('probe %d' % ms)
+
+    def writeParams(self):
+        get = lambda k: self.fields[k].text().strip()
+        self.send('sk %s' % get('sk'))
+        self.send('st %s' % get('st'))
+        self.send('sp %s %s' % (get('sdkp'), get('sdki')))
+        self.send('sd %s' % get('sd'))
+
+    def onLine(self, line):
+        if line.startswith('[SL CFG]'):
+            body = line[len('[SL CFG]'):].strip()
+            self.echoLabel.setText('固件存储：%s' % body)
+            self.echoLabel.setStyleSheet('color:#2e7d32;')
+            for token in body.split():
+                if '=' not in token:
+                    continue
+                k, v = token.split('=', 1)
+                if k == 'src':
+                    for key, btn in self.srcButtons.items():
+                        btn.setChecked(key == v)
+                    self.srcEcho.setText('角度源：%s' % v)
+                elif k == 'obs':
+                    for key, btn in self.obsButtons.items():
+                        btn.setChecked(key == v)
+                    self.obsEcho.setText('观测器：%s' % v)
+        elif line.startswith('[SL DBG]'):
+            values = {}
+            for token in line[len('[SL DBG]'):].strip().split():
+                if '=' in token:
+                    k, v = token.split('=', 1)
+                    values[k] = v
+
+            def g(key):
+                try:
+                    return float(values[key])
+                except (KeyError, ValueError):
+                    return None
+
+            def fmt(v, spec):
+                return '—' if v is None else spec % v
+
+            self.liveLabel.setText('the %s · thc %s · tho %s · dth %s · 锁 %s' % (
+                fmt(g('the'), '%.3f'), fmt(g('thc'), '%.3f'), fmt(g('tho'), '%.3f'),
+                fmt(g('dth'), '%+.3f'), values.get('lk', '—')))
+
+
+class SensorlessScope(QtWidgets.QGroupBox):
+    """对账波形区：吃 [SL DBG] 探针行。
+
+    - 上图「角度对账」：the 真值绿 / thc 控制链蓝 / tho 估计橙（左轴，rad）+
+      dth 误差红虚线（右轴，rad）——三线合一是判据本体（谁在跟谁、差多少）；
+    - 下图「速度/电」：we 真值绿虚 / wo 估计橙（左轴 rad/s）+ iq 灰（右轴 A）；
+    - 时基=固件 ms 字段（首行归零；ms 回退=固件复位清屏，沿 ForceScope 纪律）；
+    - 采样/重绘分离、暂停照常记录、MAX_POINTS 上限（同 ForceScope）。
+    """
+
+    MAX_POINTS = 6000
+    CURVES = [
+        ('the', 'θ_enc 真值 (rad)', '#43a047'),
+        ('thc', 'θ_ctrl 控制链 (rad)', '#1e88e5'),
+        ('tho', 'θ_obs 估计 (rad)', '#fb8c00'),
+        ('dth', 'Δθ 误差 (rad)', '#e53935'),
+        ('we', 'ω_enc (rad/s)', '#43a047'),
+        ('wo', 'ω_obs (rad/s)', '#fb8c00'),
+        ('iq', 'Iq (A)', '#9e9e9e'),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__('无感对账波形（[SL DBG] 探针流 · 固件 ms 时基）', parent)
+        self.device = SimpleFOCDevice.getInstance()
+        self.bufT = []
+        self.bufY = {key: [] for key, _n, _c in self.CURVES}
+        self.bufMeta = []
+        self.pendingSamples = []
+        self.droppedRows = 0
+        self.t0Ms = None
+        self.lastMs = None
+        self.paused = False
+        self.arrivalStamps = []
+
+        self.grid = QtWidgets.QGridLayout(self)
+
+        # 上图：角度对账（the/thc/tho 左轴 + dth 右轴）
+        self.plotAngle = pg.PlotWidget()
+        pA = self.plotAngle.plotItem
+        pA.setLabel('left', '角度 (rad)')
+        pA.setLabel('bottom', 't (s)')
+        self.plotAngle.showGrid(x=True, y=True, alpha=0.3)
+        self.grid.addWidget(self.plotAngle, 0, 0, 1, 2)
+
+        pA.showAxis('right')
+        self.vbErr = pg.ViewBox()
+        pA.scene().addItem(self.vbErr)
+        pA.getAxis('right').linkToView(self.vbErr)
+        self.vbErr.setXLink(pA)
+        pA.getAxis('right').setLabel('Δθ 误差 (rad)')
+
+        def syncErrView():
+            self.vbErr.setGeometry(pA.vb.sceneBoundingRect())
+
+        pA.vb.sigResized.connect(syncErrView)
+        self.vbErr.enableAutoRange(x=False, y=True)
+
+        # 下图：速度 + 电流
+        self.plotSpeed = pg.PlotWidget()
+        pS = self.plotSpeed.plotItem
+        pS.setLabel('left', 'ω (rad/s)')
+        pS.setLabel('bottom', 't (s)')
+        self.plotSpeed.showGrid(x=True, y=True, alpha=0.3)
+        self.grid.addWidget(self.plotSpeed, 1, 0, 1, 2)
+
+        pS.showAxis('right')
+        self.vbIq = pg.ViewBox()
+        pS.scene().addItem(self.vbIq)
+        pS.getAxis('right').linkToView(self.vbIq)
+        self.vbIq.setXLink(pS)
+        pS.getAxis('right').setLabel('Iq (A)')
+
+        def syncIqView():
+            self.vbIq.setGeometry(pS.vb.sceneBoundingRect())
+
+        pS.vb.sigResized.connect(syncIqView)
+        self.vbIq.enableAutoRange(x=False, y=True)
+        self.plotAngle.setXLink(self.plotSpeed)
+
+        self.curves = {}
+        for key, name, color in self.CURVES:
+            pen = pg.mkPen(color, width=2)
+            if key == 'dth':
+                pen = pg.mkPen(color, width=2, style=QtCore.Qt.DashLine)
+            elif key == 'we':
+                pen = pg.mkPen(color, width=2, style=QtCore.Qt.DashLine)
+            if key in ('the', 'thc', 'tho'):
+                curve = self.plotAngle.plot(pen=pen, name=name)
+            elif key == 'dth':
+                curve = pg.PlotDataItem(pen=pen)
+                self.vbErr.addItem(curve)
+            elif key in ('we', 'wo'):
+                curve = self.plotSpeed.plot(pen=pen, name=name)
+            else:
+                curve = pg.PlotDataItem(pen=pen)
+                self.vbIq.addItem(curve)
+            self.curves[key] = curve
+
+        # 控制行
+        ctrl = QtWidgets.QFrame()
+        ctrlLayout = QtWidgets.QHBoxLayout(ctrl)
+        self.curveChecks = {}
+        for key, name, color in self.CURVES:
+            box = QtWidgets.QCheckBox(name)
+            box.setChecked(True)
+            box.setStyleSheet('color:%s; font-weight:bold;' % color)
+            box.stateChanged.connect(
+                lambda state, k=key: self.curves[k].setVisible(state != 0))
+            self.curveChecks[key] = box
+            ctrlLayout.addWidget(box)
+        self.pauseButton = QtWidgets.QPushButton('暂停')
+        self.pauseButton.setIcon(GUIToolKit.getIconByName('pause'))
+        self.pauseButton.clicked.connect(self.onPauseToggle)
+        ctrlLayout.addWidget(self.pauseButton)
+        self.clearButton = QtWidgets.QPushButton('清空')
+        self.clearButton.setIcon(GUIToolKit.getIconByName('restart'))
+        self.clearButton.clicked.connect(self.clearPlot)
+        ctrlLayout.addWidget(self.clearButton)
+        self.exportButton = QtWidgets.QPushButton('导出CSV')
+        self.exportButton.setIcon(GUIToolKit.getIconByName('save'))
+        self.exportButton.clicked.connect(self.exportCsv)
+        ctrlLayout.addWidget(self.exportButton)
+        ctrlLayout.addStretch(1)
+        self.statusLabel = QtWidgets.QLabel('等待 [SL DBG] 探针行…')
+        self.statusLabel.setStyleSheet('color:#888;')
+        ctrlLayout.addWidget(self.statusLabel)
+        self.grid.addWidget(ctrl, 2, 0, 1, 2)
+
+        self.device.commProvider.commandDataReceived.connect(self.onLine)
+
+        self.redrawTimer = QtCore.QTimer(self)
+        self.redrawTimer.setInterval(50)
+        self.redrawTimer.timeout.connect(self.drainAndRedraw)
+        self.redrawTimer.start()
+
+    def onLine(self, line):
+        if not line.startswith('[SL DBG]'):
+            return
+        values = {}
+        for token in line[len('[SL DBG]'):].strip().split():
+            if '=' in token:
+                k, v = token.split('=', 1)
+                values[k] = v
+        try:
+            ms = float(values['ms'])
+            row = {'ms': ms, 'src': values.get('src', ''), 'obs': values.get('obs', ''),
+                   'vf': values.get('vf', ''), 'lk': values.get('lk', '')}
+            for key in self.bufY:
+                row[key] = float(values[key])
+        except (KeyError, ValueError, TypeError):
+            self.droppedRows += 1
+            return
+        self.pendingSamples.append(row)
+
+    def drainAndRedraw(self):
+        if not self.pendingSamples:
+            self._refreshStatus()
+            return
+        rows = self.pendingSamples
+        self.pendingSamples = []
+        self.arrivalStamps.append(time.monotonic())
+        if self.t0Ms is not None and rows[0]['ms'] < self.lastMs - 1000.0:
+            trace('[SL SCOPE] firmware ms rewind: reset timebase')
+            self._clearBuffers()
+        for row in rows:
+            if self.t0Ms is None:
+                self.t0Ms = row['ms']
+            self.lastMs = row['ms']
+            self.bufT.append((row['ms'] - self.t0Ms) / 1000.0)
+            self.bufMeta.append('%s/%s/vf=%s/lk=%s' % (row['src'], row['obs'], row['vf'], row['lk']))
+            for key in self.bufY:
+                self.bufY[key].append(row[key])
+        overflow = len(self.bufT) - self.MAX_POINTS
+        if overflow > 0:
+            del self.bufT[:overflow]
+            del self.bufMeta[:overflow]
+            for key in self.bufY:
+                del self.bufY[key][:overflow]
+        if not self.paused:
+            self.updatePlot()
+        self._refreshStatus()
+
+    def updatePlot(self):
+        for key in self.bufY:
+            self.curves[key].setData(self.bufT, self.bufY[key])
+        self.vbErr.autoRange()
+        self.vbIq.autoRange()
+
+    def _clearBuffers(self):
+        self.bufT.clear()
+        self.bufMeta.clear()
+        for key in self.bufY:
+            self.bufY[key].clear()
+        self.t0Ms = None
+        self.lastMs = None
+        for curve in self.curves.values():
+            curve.setData([], [])
+
+    def clearPlot(self):
+        trace('[SL SCOPE] clear plot')
+        self._clearBuffers()
+        self.pendingSamples.clear()
+        self.arrivalStamps.clear()
+
+    def onPauseToggle(self):
+        self.paused = not self.paused
+        self.pauseButton.setText('继续' if self.paused else '暂停')
+
+    def exportCsv(self):
+        """导出对账缓冲（列含 src/obs/lk 元信息——离线判据按它们分段）。"""
+        if not self.bufT:
+            QtWidgets.QMessageBox.information(None, '导出CSV', '缓冲为空，先采一段再导出。')
+            return
+        defaultName = time.strftime('fockit_sensorless_%Y%m%d_%H%M%S.csv')
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            None, '导出无感对账 CSV', defaultName, 'CSV files (*.csv)')
+        if not path:
+            return
+        # 路径安全收口（同 forceBench.exportCsv / Mimosa）：basename 落 exports/
+        root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))))
+        exportsDir = os.path.join(root, 'exports')
+        os.makedirs(exportsDir, exist_ok=True)
+        fileName = os.path.basename(path.replace('\x00', '').replace('\\', '/'))
+        if not fileName:
+            return
+        path = os.path.join(exportsDir, fileName)
+        msList = [t * 1000.0 + (self.t0Ms or 0.0) for t in self.bufT]
+        sio = io.StringIO()
+        writer = csv.writer(sio, lineterminator='\n')
+        writer.writerow(['sample', 't_s', 'ms', 'meta'] +
+                        [key for key, _n, _c in self.CURVES])
+        for i in range(len(self.bufT)):
+            writer.writerow([i, self.bufT[i], msList[i], self.bufMeta[i]] +
+                            [self.bufY[key][i] for key, _n, _c in self.CURVES])
+        Path(path).write_text(sio.getvalue(), encoding='utf-8-sig')
+        trace('[SL SCOPE] CSV exported path=%r points=%d dropped=%d',
+              path, len(self.bufT), self.droppedRows)
+        QtWidgets.QMessageBox.information(
+            None, '导出CSV', '已导出 %d 点 × 7 变量（丢弃行 %d）：\n%s' %
+            (len(self.bufT), self.droppedRows, path))
+
+    def _refreshStatus(self):
+        now = time.monotonic()
+        self.arrivalStamps = [t for t in self.arrivalStamps if now - t < 2.0]
+        if not self.bufT:
+            self.statusLabel.setText('等待 [SL DBG] 探针行…')
+        else:
+            self.statusLabel.setText('%.1f 行/s · %d 点 · 丢 %d' %
+                                     (len(self.arrivalStamps) / 2.0,
+                                      len(self.bufT), self.droppedRows))
+
+
+class SensorlessBenchWidget(WorkAreaTabWidget):
+    """无感台：连接条 + [SL DBG] 对账波形 + 无感控制卡（沿 forceBench 布局先例）。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        trace('[SL] SensorlessBenchWidget.__init__ enter')
+        self.device = SimpleFOCDevice.getInstance()
+        self.setObjectName('sensorlessBench')
+
+        self.verticalLayout = QtWidgets.QVBoxLayout(self)
+        self.connectionControl = ConnectionControlGroupBox()
+        self.verticalLayout.addWidget(self.connectionControl)
+
+        self.mainSplit = QtWidgets.QHBoxLayout()
+        self.scope = SensorlessScope()
+        self.mainSplit.addWidget(self.scope, 5)
+        self.sideColumn = QtWidgets.QWidget()
+        self.sideLayout = QtWidgets.QVBoxLayout(self.sideColumn)
+        self.card = SensorlessCard(self.device)
+        self.sideLayout.addWidget(self.card)
+        self.sideLayout.addStretch(1)
+        self.mainSplit.addWidget(self.sideColumn, 2)
+        self.verticalLayout.addLayout(self.mainSplit, 1)
+
+        trace('[SL] SensorlessBenchWidget.__init__ done')
+
+    def getTabIcon(self):
+        return GUIToolKit.getIconByName('purpledot')
+
+    def getTabName(self):
+        return '无感台'

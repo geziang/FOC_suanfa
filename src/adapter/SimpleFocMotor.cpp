@@ -260,6 +260,26 @@ void SimpleFocMotor::setLimits(const MotorLimits& lim) {
 
 MotorLimits SimpleFocMotor::getLimits() { return limits_; }
 
+// ---- 无感战役扩展（2026-09-29）----
+void SimpleFocMotor::attachExternalSensor(Sensor* ext) {
+  if (ext == nullptr) return;
+  extSensor_ = ext;
+  ext->init();                // SimpleFOC Sensor 协议：挂接前初始化（幂等）
+  motor_.linkSensor(ext);     // velocity/position 模式路径即刻切换
+  Serial.println(F("[EXP MOTOR] external angle source attached"));
+}
+
+void SimpleFocMotor::detachExternalSensor() {
+  extSensor_ = nullptr;
+  motor_.linkSensor(&sensor_);
+  Serial.println(F("[EXP MOTOR] external angle source detached -> AS5600"));
+}
+
+PhaseCurrent_s SimpleFocMotor::readPhaseCurrents() {
+  return currentSense_.getPhaseCurrents();
+}
+
+
 void SimpleFocMotor::setLoopGains(LoopType loop, const LoopGains& g) {
   PIDController* pid = nullptr;
   LowPassFilter* lpf = nullptr;
@@ -286,10 +306,13 @@ void SimpleFocMotor::update() {
 
   // SimpleFOC 的 move() 仅在 velocity/angle 模式维护轴状态；
   // 力矩/空闲模式下中间件（速度PID等）仍需反馈，此处按其内部算法自行刷新。
+  // 无感扩展：反馈源 = 外部传感器（挂接时）或内部编码器——velocity/position 模式
+  // 经 linkSensor 已吃 ext，此处只补 Torque/Idle 分支（源切换的全覆盖点）。
+  Sensor* fb = extSensor_ != nullptr ? extSensor_ : &sensor_;
   if (mode_ == ControlMode::Torque || mode_ == ControlMode::Idle) {
-    motor_.shaft_velocity = motor_.LPF_velocity(sensor_.getVelocity()) *
+    motor_.shaft_velocity = motor_.LPF_velocity(fb->getVelocity()) *
                             static_cast<float>(motor_.sensor_direction);
-    motor_.shaft_angle = sensor_.getAngle() *
+    motor_.shaft_angle = fb->getAngle() *
                          static_cast<float>(motor_.sensor_direction);
   }
 

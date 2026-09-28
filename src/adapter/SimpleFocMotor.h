@@ -72,6 +72,26 @@ public:
   /// shaft_velocity，与 move() 双路径同写（速度环失控排查中发现的确定缺陷）。
   void syncStudioControlMode(int simplefocControl);
 
+  // ---- 无感战役扩展（2026-09-29，P4 前家庭平台无感观测器矩阵）----
+  // 角度源挂接：ext 语义与内部编码器一致（机械轴角 rad / rad·s⁻¹，方向由
+  /// SimpleFOC sensor_direction 统一处理）。attach 后三环反馈全吃 ext，
+  /// detach 切回内部 AS5600；标定零位（zero_electric_angle/NVS）不受影响。
+  /// 纯新增路径：extSensor_ 为空时 update() 行为与历史逐行等价（01 号冻结纪律）。
+  void attachExternalSensor(Sensor* ext);
+  void detachExternalSensor();
+  bool externalSensorAttached() const { return extSensor_ != nullptr; }
+
+  /// 观测器输入只读访问器（无感观测器吃相电流/指令电压，均为纯读不触碰控制）：
+  PhaseCurrent_s readPhaseCurrents();              ///< 相电流（InlineCurrentSense 实测）
+  float readUq() const { return motor_.voltage.q; }  ///< 指令电压 Uq [V]
+  float readUd() const { return motor_.voltage.d; }  ///< 指令电压 Ud [V]
+  float readZeroElectricAngle() const { return motor_.zero_electric_angle; }
+  /// 对账真值（无感挂接期间 state.angle 已是估计值，编码器真值走此独立出口，纯读）：
+  float readEncoderAngle() { return sensor_.getAngle() *
+                                    static_cast<float>(motor_.sensor_direction); }
+  float readEncoderVelocity() { return sensor_.getVelocity() *
+                                      static_cast<float>(motor_.sensor_direction); }
+
   void update() override;
 
   bool saveCalibration() override;
@@ -98,6 +118,7 @@ private:
   float target_ = 0.0f;       // SI 单位，按 mode_ 解释
   float voltageLimit_ = 0.0f;
   bool inited_ = false;
+  Sensor* extSensor_ = nullptr;  // 外部角度源（无感观测器/VF 适配器）；空=内部 AS5600
   MotorState state_;
 };
 

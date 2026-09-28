@@ -10,6 +10,7 @@ from src.gui.commandlinetool.commandlinetool import CommandLineConsoleTool
 from src.gui.configtool.deviceConfigurationTool import DeviceConfigurationTool
 from src.gui.configtool.forceBench import ForceBenchWidget
 from src.gui.configtool.generatedCodeDisplay import GeneratedCodeDisplay
+from src.gui.configtool.sensorlessBench import SensorlessBenchWidget
 from src.gui.configtool.treeViewConfigTool import TreeViewConfigTool
 from src.gui.configtool.tuningBench import TuningBenchWidget
 from src.simpleFOCConnector import SimpleFOCDevice
@@ -31,6 +32,7 @@ class WorkAreaTabbedWidget(QtWidgets.QTabWidget):
         self.configDeviceTool = None
         self.tuningBenchTool = None
         self.forceBenchTool = None
+        self.sensorlessBenchTool = None
         self.generatedCodeTab = None
         self.activeToolsList = []
 
@@ -52,6 +54,8 @@ class WorkAreaTabbedWidget(QtWidgets.QTabWidget):
             self.tuningBenchTool = None
         if type(self.currentWidget()) == ForceBenchWidget:
             self.forceBenchTool = None
+        if type(self.currentWidget()) == SensorlessBenchWidget:
+            self.sensorlessBenchTool = None
         if type(self.currentWidget()) == GeneratedCodeDisplay:
             self.generatedCodeTab = None
         if self.configDeviceTool == None and self.cmdLineTool == None:
@@ -91,6 +95,22 @@ class WorkAreaTabbedWidget(QtWidgets.QTabWidget):
             self.activeToolsList.append(self.forceBenchTool)
             self.addTab(self.forceBenchTool,
                         self.forceBenchTool.getTabIcon(), '力控')
+            self.setCurrentIndex(self.currentIndex() + 1)
+
+    def addSensorlessBench(self):
+        """无感台（2026-09-29）：无感观测器矩阵对账工作页，见 sensorlessBench.py。"""
+        trace('[UI] addSensorlessBench clicked; existing=%r', self.sensorlessBenchTool is not None)
+        if self.sensorlessBenchTool is None:
+            try:
+                trace('[UI] addSensorlessBench constructing SensorlessBenchWidget')
+                self.sensorlessBenchTool = SensorlessBenchWidget()
+                trace('[UI] addSensorlessBench SensorlessBenchWidget constructed')
+            except Exception as exception:
+                trace_exception('addSensorlessBench', exception)
+                raise
+            self.activeToolsList.append(self.sensorlessBenchTool)
+            self.addTab(self.sensorlessBenchTool,
+                        self.sensorlessBenchTool.getTabIcon(), '无感')
             self.setCurrentIndex(self.currentIndex() + 1)
 
     def addDeviceForm(self):
