@@ -23,6 +23,7 @@ import pyqtgraph as pg
 from PyQt5 import QtCore, QtWidgets
 
 from src.gui.configtool.connectionControl import ConnectionControlGroupBox
+from src.gui.configtool import identFit
 from src.gui.sharedcomnponets.sharedcomponets import (WorkAreaTabWidget,
                                                       GUIToolKit)
 from src.simpleFOCConnector import SimpleFOCDevice
@@ -59,7 +60,7 @@ class ForceCard(QtWidgets.QGroupBox):
         ('ac', 'a (rad/s²)', '2'),
     ]
     MODES = [('raw', 'raw 裸力矩'), ('pend', '虚拟摆'), ('imp', '阻抗'),
-             ('wall', '虚拟墙'), ('traj', '柔顺轨迹')]
+             ('wall', '虚拟墙'), ('traj', '柔顺轨迹'), ('id', '辨识激励')]
 
     def __init__(self, device, parent=None):
         super().__init__('力控参数（02 号 FocKit_force_ctrl）', parent)
@@ -111,17 +112,35 @@ class ForceCard(QtWidgets.QGroupBox):
         self.probeOff.clicked.connect(lambda: self.send('probe off'))
         self.grid.addWidget(self.probeOff, 6, 2, 1, 2)
 
+        # P3 辨识激励（chirp；固件自动切 id 模式；A 以 mN·m 输入发送转 N·m——手敲勿粘贴，EXP-08）
+        self.chirpA = QtWidgets.QLineEdit('4')
+        self.chirpF0 = QtWidgets.QLineEdit('0.5')
+        self.chirpF1 = QtWidgets.QLineEdit('10')
+        self.chirpT = QtWidgets.QLineEdit('20')
+        for col, w in enumerate((QtWidgets.QLabel('A(mN·m)'), self.chirpA,
+                                 QtWidgets.QLabel('f0(Hz)'), self.chirpF0,
+                                 QtWidgets.QLabel('f1(Hz)'), self.chirpF1)):
+            self.grid.addWidget(w, 7, col)
+        self.chirpGo = QtWidgets.QPushButton('启动激励')
+        self.chirpGo.clicked.connect(self.onChirpGo)
+        self.grid.addWidget(QtWidgets.QLabel('T(s)'), 8, 0)
+        self.grid.addWidget(self.chirpT, 8, 1)
+        self.grid.addWidget(self.chirpGo, 8, 2, 1, 2)
+        self.chirpStop = QtWidgets.QPushButton('停止激励')
+        self.chirpStop.clicked.connect(lambda: self.send('chirp off'))
+        self.grid.addWidget(self.chirpStop, 8, 4, 1, 2)
+
         # 回显状态（写入必读回的显示面；绿 = 回显已到达 = 写入落地证据）
         self.echoLabel = QtWidgets.QLabel('固件存储：—（写入/读回后刷新）')
         self.echoLabel.setStyleSheet('color:#888;')
-        self.grid.addWidget(self.echoLabel, 7, 0, 1, 6)
+        self.grid.addWidget(self.echoLabel, 9, 0, 1, 6)
 
         # [FC DBG] 实时读数行
         self.liveLabel = QtWidgets.QLabel('θ — · θ̇ — · θ* — · Iq — · τcmd —')
         liveFont = self.liveLabel.font()
         liveFont.setBold(True)
         self.liveLabel.setFont(liveFont)
-        self.grid.addWidget(self.liveLabel, 8, 0, 1, 6)
+        self.grid.addWidget(self.liveLabel, 10, 0, 1, 6)
 
         # 串口行监听：commandDataReceived 多播信号（[FC CFG]/[FC DBG] 落此通道，
         # 与命令行页/树视图/本页波形并行接收互不干扰）
@@ -143,6 +162,18 @@ class ForceCard(QtWidgets.QGroupBox):
             QtWidgets.QMessageBox.warning(None, '探针', '探针周期必须是数字(ms)。')
             return
         self.send('probe %d' % ms)
+
+    def onChirpGo(self):
+        """P3 辨识激励武装：A(mN·m→N·m)/f0/f1(Hz)/T(s) 四值发 chirp 命令（固件自动切 id）。"""
+        try:
+            a = float(self.chirpA.text().strip()) / 1000.0
+            f0 = float(self.chirpF0.text().strip())
+            f1 = float(self.chirpF1.text().strip())
+            t = float(self.chirpT.text().strip())
+        except ValueError:
+            QtWidgets.QMessageBox.warning(None, '辨识激励', 'A/f0/f1/T 必须是数字。')
+            return
+        self.send('chirp %.6g %.6g %.6g %.6g' % (a, f0, f1, t))
 
     def write(self):
         for key, _label, _default in self.PARAMS:
@@ -308,6 +339,15 @@ class ForceScope(QtWidgets.QGroupBox):
         self.exportButton.setIcon(GUIToolKit.getIconByName('save'))
         self.exportButton.clicked.connect(self.exportCsv)
         ctrlLayout.addWidget(self.exportButton)
+        self.fitButton = QtWidgets.QPushButton('辨识拟合')
+        self.fitButton.setIcon(GUIToolKit.getIconByName('statistics'))
+        self.fitButton.setToolTip('P3：对当前缓冲跑 J/τf/b 双估计器拟合（identFit.py）')
+        self.fitButton.clicked.connect(self.onIdentFit)
+        ctrlLayout.addWidget(self.fitButton)
+        self.fitCsvButton = QtWidgets.QPushButton('拟合CSV…')
+        self.fitCsvButton.setToolTip('P3：从导出的 CSV 离线拟合（QFileDialog 选文件）')
+        self.fitCsvButton.clicked.connect(self.onIdentFitCsv)
+        ctrlLayout.addWidget(self.fitCsvButton)
         ctrlLayout.addStretch(1)
         self.statusLabel = QtWidgets.QLabel('等待 [FC DBG] 探针行…')
         self.statusLabel.setStyleSheet('color:#888;')
@@ -404,6 +444,34 @@ class ForceScope(QtWidgets.QGroupBox):
     def onPauseToggle(self):
         self.paused = not self.paused
         self.pauseButton.setText('继续' if self.paused else '暂停')
+
+    def onIdentFit(self):
+        """P3 辨识拟合：吃当前显示缓冲（优先仅 mode==id 段），identFit 双估计器出 J/τf/b±95%CI。"""
+        if len(self.bufT) < 50:
+            QtWidgets.QMessageBox.information(
+                None, '辨识拟合', '缓冲不足 50 点：先「启动激励」采一段 chirp 再拟合。\n'
+                '（上机前可先跑 python identFit.py --selftest 验证工具自身）')
+            return
+        try:
+            rep = identFit.fitRows(self.bufT, self.bufY['th'], self.bufY['sv'],
+                                   self.bufY['tc'], self.bufMode)
+        except Exception as exc:                    # 拟合失败不拖垮界面
+            rep = '拟合失败：%r\n（检查：激励幅值是否破摩死区？探针是否 ≥10ms 密度？）' % (exc,)
+        QtWidgets.QMessageBox.information(None, '辨识拟合（J/τf/b ±95%CI）', rep)
+
+    def onIdentFitCsv(self):
+        """P3：从导出 CSV 离线拟合。文件来源限定 QFileDialog（路径安全收口，Mimosa，
+        同 workAreaTabbedWidget 设备页 JSON 加载模式——open 的输入不来自命令行参数）。"""
+        dlg = QtWidgets.QFileDialog()
+        dlg.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+        if not dlg.exec_():
+            return
+        try:
+            t, th, sv, tc = identFit._load_csv(dlg.selectedFiles()[0])
+            rep = identFit.fitRows(t, th, sv, tc)
+        except Exception as exc:
+            rep = '拟合失败：%r' % (exc,)
+        QtWidgets.QMessageBox.information(None, '辨识拟合CSV（J/τf/b ±95%CI）', rep)
 
     def exportCsv(self):
         """导出显示缓冲为 CSV（显示与记录同源；暂停态可导整段）。

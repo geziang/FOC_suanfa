@@ -14,6 +14,7 @@
 //     imp   阻抗     T = K(θ*-θ) - D·θ̇           —— 虚拟弹簧+阻尼（T-P2-2）
 //     wall  虚拟墙   θ<θw 自由 T=0；越墙 T=-Kw(θ-θw)-Dw·θ̇（只推不拉）（T-P2-3）
 //     traj  柔顺轨迹 T = K(θ*(t)-θ) - D·θ̇，θ*(t)=梯形发生器（T-P2-5，还 T-P1-8 挂账）
+//     id    辨识激励 T = tq + A·sin(φ)，φ 按 chirp f0→f1 线性扫频累积（P3 收官战役，SPEC-P §4）
 //
 // —— 计算优先（与 01 号同源，SPEC-T §1 / REF-14 §3）——
 // 电流环：沿用 TST-01 定档 ωc=125（kp=L·ωc=0.53、ki=R·ωc=1031、Tf=2ms）
@@ -34,6 +35,9 @@
 //                                 软启动，θ* 无跳变）
 //   gv|th0|kk|kd|tp|tq <值>  在线调参（Gv/θ0/K/D/θ*/裸力矩），写入即回显读回值
 //   kw|thw|dw|ta|tv|ac <值>  墙参数（K_w/θ_wall/D_w）与轨迹参数（幅值A/巡航ω*/加速度）
+//   chirp <A_Nm> <f0_Hz> <f1_Hz> <T_s>  P3 辨识激励：武装扫频（自动切 id 模式；
+//                                 f1 硬顶 15Hz≈0.75·ωc/2π，激励须≪力矩通道带宽；chirp off 中止）
+//   拟合：上位机力控台"辨识拟合"按钮（identFit.py：冲量法×微分法双估计，绕开 θ̈ 双差分噪声）
 //   pred                重打印预测量计算链
 //   probe <ms>|off      [FC DBG] 探针周期（默认 50ms；摆频 5.6Hz 需 ≥10 点/周期）
 //   tq ±2e-3/±5e-3/±1e-2  T-P2-1① 堵转对账阶梯（手按转子看 [FC DBG] iq 列）
@@ -124,8 +128,46 @@ struct TrajGen {
 };
 TrajGen trajGen;
 
+// ========== P3 辨识激励发生器（id 模式：raw 基值 + chirp 扫频，SPEC-P §4） ==========
+// 激励频窗设计：f1 硬顶 0.75·ωc/2π≈15Hz（力矩通道带宽 ωc=125 rad/s 之下留裕度，
+// 激励频率必须≪通道带宽，扫出去的才是机械特性而非通道特性）；默认 A=4mN·m≈4×τf 破摩死区。
+struct IdGen {
+  float amp = 0.004f;    // [N·m] 激励幅值
+  float f0 = 0.5f;       // [Hz] 起始频率
+  float f1 = 10.0f;      // [Hz] 终止频率
+  float dur = 20.0f;     // [s] 扫频时长（到时自动归零）
+  bool active = false;
+  float t = 0.0f, phase = 0.0f;
+  uint32_t lastUs = 0;
+  void arm(float a, float fa, float fb, float sec) {
+    amp = constrain(a, -0.016f, 0.016f);        // 与力律同限（双保险之上再加一道）
+    f0 = constrain(fa, 0.05f, 15.0f);
+    f1 = constrain(fb, 0.05f, 15.0f);
+    dur = constrain(sec, 1.0f, 120.0f);
+    t = 0.0f; phase = 0.0f; active = true; lastUs = micros();
+  }
+  void stop() { active = false; }
+  float update() {                    // 每控制拍调用一次（与 TrajGen 同款时基纪律）
+    if (!active) return 0.0f;
+    uint32_t now = micros();
+    float dt = (float)(now - lastUs) * 1e-6f;
+    lastUs = now;
+    if (dt <= 0.0f || dt > 0.01f) return amp * sinf(phase);  // 首拍/长卡顿：相位不推
+    t += dt;
+    if (t >= dur) {
+      active = false;
+      Serial.println(F("[FC ID] chirp done"));
+      return 0.0f;
+    }
+    float f = f0 + (f1 - f0) * (t / dur);
+    phase += 2.0f * (float)M_PI * f * dt;
+    return amp * sinf(phase);
+  }
+};
+IdGen idGen;
+
 // ========== 模式（五模式一骨架，两轮交付已齐，REF-14 §6） ==========
-enum class FcMode : uint8_t { Raw, Pend, Imp, Wall, Traj };
+enum class FcMode : uint8_t { Raw, Pend, Imp, Wall, Traj, Id };
 FcMode fcMode = FcMode::Raw;  // 安全启动：raw+零力矩（pend 开机即摆动，由用户显式切入）
 const char* fcModeName(FcMode m) {
   switch (m) {
@@ -134,6 +176,7 @@ const char* fcModeName(FcMode m) {
     case FcMode::Imp:  return "imp";
     case FcMode::Wall: return "wall";
     case FcMode::Traj: return "traj";
+    case FcMode::Id:   return "id";
   }
   return "?";
 }
@@ -175,6 +218,12 @@ void computePredictions() {
   float legT = (tvTraj > 1e-6f) ? (2.0f * taTraj / tvTraj) : 0.0f;  // 单程粗账（不含加减速）
   Serial.printf("[FC PRED] traj: 恒速滞后e=(τf+D·ω*)/K=%.3f rad 回轨ts≈%.2fs 单程≈%.1fs\n",
                 (double)eSs, (double)tsEst, (double)legT);
+  float f1Cap = 0.75f * WC / (2.0f * (float)M_PI);          // ≈15 Hz：激励频窗硬顶
+  float thAmpF1 = idGen.amp / (J_EST * powf(2.0f * (float)M_PI * idGen.f1, 2.0f));
+  Serial.printf("[FC PRED] id: A=%.2f mN·m f=%.2f~%.2f Hz T=%.1fs（f1 硬顶 %.1fHz=0.75·ωc/2π）"
+                " f1 处惯性估幅 θ̂≈%.2f rad（A/(Jω²)，摩擦另计）\n",
+                (double)(idGen.amp * 1000.0f), (double)idGen.f0, (double)idGen.f1,
+                (double)idGen.dur, (double)f1Cap, (double)thAmpF1);
 }
 
 void printParams() {  // 调参回显（写入必读回，EXP-04）
@@ -210,6 +259,8 @@ float computeLaw(float th, float sv) {
     }
     case FcMode::Traj:                     // 阻抗绕梯形轨迹（T-P2-5）
       return kImp * (trajGen.update() - th) - dImp * sv;
+    case FcMode::Id:                       // P3 辨识激励：raw 基值 + chirp 扫频（SPEC-P §4）
+      return tqRaw + idGen.update();
   }
   return 0.0f;
 }
@@ -228,6 +279,7 @@ bool fcCommands(int argc, char* argv[]) {
   if (!strcmp(argv[0], "mode") && argc >= 2) {
     if (argv[1][0] == 'r')      fcMode = FcMode::Raw;
     else if (argv[1][0] == 'p') fcMode = FcMode::Pend;
+    else if (argv[1][0] == 'i' && argv[1][1] == 'd') fcMode = FcMode::Id;  // "id" 先于 "imp"
     else if (argv[1][0] == 'i') fcMode = FcMode::Imp;
     else if (argv[1][0] == 'w') fcMode = FcMode::Wall;
     else if (argv[1][0] == 't') fcMode = FcMode::Traj;
@@ -236,8 +288,32 @@ bool fcCommands(int argc, char* argv[]) {
     if (fcMode == FcMode::Traj) trajGen.begin(motor.getState().angle);  // 软启动无跳变
     Serial.printf("[FC CFG] mode=%s%s\n", fcModeName(fcMode),
                   fcMode == FcMode::Imp  ? " (imp: θ≈θ* 附近开)" :
-                  fcMode == FcMode::Traj ? " (θ* 从当前角软启动)" : "");
+                  fcMode == FcMode::Traj ? " (θ* 从当前角软启动)" :
+                  fcMode == FcMode::Id   ? " (id: chirp A f0 f1 T 武装激励)" : "");
     computePredictions();
+    return true;
+  }
+
+  // P3 辨识激励：chirp <A_N·m> <f0_Hz> <f1_Hz> <T_s>（自动切 id；f1 硬顶 15Hz≈0.75·ωc/2π）
+  if (!strcmp(argv[0], "chirp")) {
+    if (argc >= 2 && !strcmp(argv[1], "off")) {
+      idGen.stop();
+      Serial.println(F("[FC ID] chirp off"));
+      return true;
+    }
+    if (argc >= 5) {
+      idGen.arm(strtof(argv[1], nullptr), strtof(argv[2], nullptr),
+                strtof(argv[3], nullptr), strtof(argv[4], nullptr));
+      if (fcMode != FcMode::Id) {
+        fcMode = FcMode::Id;
+        Serial.println(F("[FC CFG] mode=id (chirp 自动切入)"));
+      }
+      Serial.printf("[FC ID] armed A=%.4f N·m f=%.2f~%.2f Hz T=%.1fs（探针建议 10ms）\n",
+                    (double)idGen.amp, (double)idGen.f0, (double)idGen.f1, (double)idGen.dur);
+      computePredictions();
+      return true;
+    }
+    Serial.println(F("[FC ID] 用法：chirp <A_N·m> <f0_Hz> <f1_Hz> <T_s> | chirp off"));
     return true;
   }
 
@@ -361,7 +437,7 @@ void setup() {
   Serial.println(F("[FW BOOT] shell attaches done"));
   shell.attachVerboseHook(applyVerbose);
   Serial.println(F("[FW BOOT] shell.attachVerboseHook done"));
-  Serial.println(F("P2 力控主程序（02 号·第二轮：五模式全）就绪。命令：mode raw|pend|imp|wall|traj / gv|th0|kk|kd|tp|tq|kw|thw|dw|ta|tv|ac <值> / pred / probe <ms>|off / stream / studio（help 查全部）"));
+  Serial.println(F("P2 力控主程序（02 号·第二轮+P3：六模式含 id 辨识激励）就绪。命令：mode raw|pend|imp|wall|traj|id / gv|th0|kk|kd|tp|tq|kw|thw|dw|ta|tv|ac <值> / chirp <A> <f0> <f1> <T>|off（P3） / pred / probe <ms>|off / stream / studio（help 查全部）"));
   Serial.println(F("[FW BOOT] boot 默认 raw+零力矩；[FC DBG] 探针 50ms 已开（时基锚点）"));
   Serial.println(F("[FW BOOT] setup complete"));
 }
@@ -392,7 +468,7 @@ void loop() {
   uint32_t now = millis();
   if (probeOn && now - lastProbeMs >= probePeriodMs) {
     lastProbeMs = now;
-    Serial.printf("[FC DBG] ms=%lu mode=%s th=%.3f sv=%.3f tp=%.3f iq=%.4f tc=%.4f\n",
+    Serial.printf("[FC DBG] ms=%lu mode=%s th=%.3f sv=%.3f tp=%.3f iq=%.5f tc=%.5f\n",
                   (unsigned long)now, fcModeName(fcMode),
                   (double)st.angle, (double)st.velocity,
                   (double)fcRefAngle(), (double)st.iq, (double)tau);
