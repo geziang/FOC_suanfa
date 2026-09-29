@@ -53,7 +53,9 @@
 //   stream / studio / dbg / help —— 沿 01 号全套
 //
 // 探针（[SL DBG]，对账数据源）：
-//   the=编码器真值(机械 rad) thc=控制链角 tho=观测器角(回卷显示) dth=电域对账误差÷PP(机械域)
+//   the=编码器真值(机械 rad) thc=控制链角 tho=估计角——thc/tho 显示值=the−各自真误差
+//   （三线对齐真值零点：线间间隙=真误差；enc 源 err=0 / vf 源=滑差 / obs 源=dth）
+//   dth=电域对账误差÷PP(机械域)
 //   we=编码器速度 wo=观测器速度 vfW=VF 当前机械速度（到速判据源） iq=电流 uq=指令电压
 //
 // 纪律：
@@ -613,13 +615,18 @@ void loop() {
   if (probeOn && now - lastProbeMs >= probePeriodMs) {
     lastProbeMs = now;
     float the = motor.readEncoderAngle();
-    float thc = motor.getState().angle;
-    float tho = obsType != ObsType::Off
-                ? (obsTh() + offEst - zeroElecCached) / PP : 0.0f;  // 估计角（回卷显示）
     // dth 电域对账：估计电角 ±π 回卷使机械域差 wrapPi(the−tho) 成锯齿混叠伪影
     // （高速 ±2.7 乱摆）；电域差 wrapPi 后 ÷PP 才是真瞬时误差（T-SL ① 判据数据源）
     float dth = obsType != ObsType::Off
         ? wrapPi(the * PP + zeroElecCached - (obsTh() + offEst)) / PP : 0.0f;
+    // 三线显示对齐真值零点：thc(案⑦后里程表)与旧公式 tho(回卷贴地)零点不同，波形上
+    // 被读成"误差~1000"——实为里程表零点差恒偏置。显示角=the−各自真误差，线间间隙
+    // =真误差；纯显示层，判据源 dth 不变
+    float tho = the - dth;                                        // 估计线（obs=off 时与真值重合）
+    float thcErr = srcType == SrcType::Enc ? 0.0f                // enc：控制链即真值
+                 : srcType == SrcType::Vf  ? wrapPi(the * PP - vfSensor.thE) / PP  // vf：滑差
+                 : dth;                                           // obs：控制链误差=估计误差
+    float thc = the - thcErr;
     float we = motor.readEncoderVelocity();
     float wo = obsType != ObsType::Off ? obsWe() / PP : 0.0f;
     Serial.printf("[SL DBG] ms=%lu src=%s obs=%s vf=%s vfW=%.1f the=%.3f thc=%.3f tho=%.3f dth=%.3f "
