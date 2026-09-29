@@ -125,6 +125,17 @@ class SensorlessCard(QtWidgets.QGroupBox):
         self.liveLabel.setFont(liveFont)
         self.grid.addWidget(self.liveLabel, 5, 0, 1, 10)
 
+        # 串口命令行（手动实验台：掐时机 src obs / probe 调档 / 任意指令直发，
+        # 与一键启动状态机互不干扰——手动路径不武装自动交接）
+        self.cmdInput = QtWidgets.QLineEdit()
+        self.cmdInput.setPlaceholderText(
+            '手动命令：vf 30 / src obs / loop v / 30(目标) / probe 20 / obs smo|flux …')
+        self.cmdInput.returnPressed.connect(self.onManualCmd)
+        self.grid.addWidget(self.cmdInput, 6, 0, 1, 4)
+        self.cmdSend = QtWidgets.QPushButton('发送')
+        self.cmdSend.clicked.connect(self.onManualCmd)
+        self.grid.addWidget(self.cmdSend, 6, 4)
+
         self.device.commProvider.commandDataReceived.connect(self.onLine)
 
     def send(self, text):
@@ -157,6 +168,13 @@ class SensorlessCard(QtWidgets.QGroupBox):
         for k, btn in self.obsButtons.items():
             btn.setChecked(k == key)
         self.send('obs ' + key)
+
+    def onManualCmd(self):
+        text = self.cmdInput.text().strip()
+        if not text:
+            return
+        self.send(text)
+        self.cmdInput.clear()
 
     def onStart(self):
         v = self.readSpeed()
