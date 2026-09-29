@@ -56,12 +56,28 @@ struct Tsl2Runner {
   uint16_t cycles = 5;
   uint16_t savedProbeMs = 50;
   bool savedProbeOn = true;
+  float lastOdomA = 0;       // 里程表斜率采样（判据速度源）
+  uint32_t lastOdomMs = 0;
+  float slopeV = 0;          // 真速度 = Δθ里程/Δt（20ms 窗）
 
   float hiV() const { return 30.0f; }
   float loV() const { return hiV() - amp; }
   bool active() const { return ph != Ph::Off; }
   void emit(const char* s) { Serial.printf("[TSL2] %s\n", s); }
   void setPh(Ph p, uint32_t now) { ph = p; tPhaseMs = now; tBeatMs = now; beats = 0; halfIdx = 0; }
+
+  // 判据速度源：里程表斜率。readEncoderVelocity()（SimpleFOC getVelocity）在 ~0.4ms
+  // 微分窗下量化 ~3.69 rad/s 档位——真速度 30 时读数只跳 25.8/29.5/33.2/36.9，到速
+  // 判据 |we−30|≤1 永假（20260929_212114 首跑 ABORT"A 段到速超时"根因）；里程表
+  // 20ms 窗差分的量化仅 1 count/20ms≈0.077 rad/s，细 48 倍
+  void sampleSlope(uint32_t now) {
+    if (now - lastOdomMs < 20) return;
+    float a = motor.readEncoderAngle();
+    float dt = (now - lastOdomMs) * 0.001f;
+    if (dt > 0.0f) slopeV = (a - lastOdomA) / dt;
+    lastOdomA = a;
+    lastOdomMs = now;
+  }
 
   void begin(float a, uint32_t hm) {
     if (active()) { emit("已在运行（tsl2 off 取消）"); return; }
@@ -79,6 +95,8 @@ struct Tsl2Runner {
     tsl2Cmd("src", "enc");
     tsl2Cmd("loop", "v");
     tsl2Cmd("30");
+    lastOdomA = motor.readEncoderAngle();   // 斜率判据预置（首拍有分母）
+    lastOdomMs = millis(); slopeV = 0;
     ph = Ph::EncRamp; tPhaseMs = tBeatMs = millis();
   }
 
@@ -115,10 +133,10 @@ struct Tsl2Runner {
         break;
       default: break;
     }
-    float we = motor.readEncoderVelocity();
+    sampleSlope(now);   // 判据速度源（见 sampleSlope 注释）
     switch (ph) {
       case Ph::EncRamp:
-        if (fabsf(we - hiV()) <= 1.0f) {
+        if (fabsf(slopeV - hiV()) <= 1.5f) {
           if (now - tBeatMs >= 1000) { emit("阶段A·方波开始"); setPh(Ph::EncSquare, now); tsl2Cmd("30"); }
         } else tBeatMs = now;
         if (now - tPhaseMs > 20000) { bail("A 段到速超时"); return; }
@@ -138,7 +156,7 @@ struct Tsl2Runner {
         break; }
 
       case Ph::EncStop:
-        if (fabsf(we) <= 0.5f) {
+        if (fabsf(slopeV) <= 0.5f) {
           if (now - tBeatMs >= 500) {
             emit("阶段B·无感对照：obs smo + vf 30 + 等锁");
             tsl2Cmd("obs", "smo");
@@ -168,14 +186,14 @@ struct Tsl2Runner {
         break; }
 
       case Ph::ObsSettle:
-        if (fabsf(we - hiV()) <= 1.5f) {
+        if (fabsf(slopeV - hiV()) <= 1.5f) {
           if (now - tBeatMs >= 1000) { emit("阶段B·方波开始"); setPh(Ph::ObsSquare, now); tsl2Cmd("30"); }
         } else tBeatMs = now;
         if (now - tPhaseMs > 15000) { bail("B 段到速超时"); return; }
         break;
 
       case Ph::ObsBrake:
-        if (we <= 8.0f) {   // 8 rad/s 时 BEMF≈0.26V≫0.08V 锁阈，全程有感知区切编码器
+        if (slopeV <= 8.0f) {   // 8 rad/s 时 BEMF≈0.26V≫0.08V 锁阈，全程有感知区切编码器
           tsl2Cmd("vf", "off");   // 撤 vf ghost
           tsl2Cmd("src", "enc");  // 速度环仍在、目标 0 → 编码器刹停
           emit("编码器收尾刹停中");
@@ -185,7 +203,7 @@ struct Tsl2Runner {
         break;
 
       case Ph::EncFinal:
-        if (fabsf(we) <= 0.5f) {
+        if (fabsf(slopeV) <= 0.5f) {
           if (now - tBeatMs >= 500) { finish("两段采集完毕，可导 CSV"); return; }
         } else tBeatMs = now;
         if (now - tPhaseMs > 15000) { bail("收尾停机超时"); return; }
