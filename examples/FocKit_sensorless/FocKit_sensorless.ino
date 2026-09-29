@@ -53,7 +53,7 @@
 //   stream / studio / dbg / help —— 沿 01 号全套
 //
 // 探针（[SL DBG]，对账数据源）：
-//   the=编码器真值(机械 rad) thc=控制链角 tho=观测器角 dth=真值−估计(机械域)
+//   the=编码器真值(机械 rad) thc=控制链角 tho=观测器角(回卷显示) dth=电域对账误差÷PP(机械域)
 //   we=编码器速度 wo=观测器速度 vfW=VF 当前机械速度（到速判据源） iq=电流 uq=指令电压
 //
 // 纪律：
@@ -198,13 +198,32 @@ struct VfSensor : public Sensor {
 };
 
 // ---- 观测器传感器：θ̂+off → 机械角（SimpleFOC elec=shaft·PP+zeroElec 反解） ----
+// 连续角纪律（194634 案）：观测器电角是 ±π 回卷的"罗盘"，直接 ÷PP 得 0.898 宽
+// 锯齿窗——Sensor 基类整圈检测（阈值 0.8·2π）看不见 2π/PP 的回跳，full_rotations
+// 永不累加 → getVelocity() 差分出锯齿残渣（真值 +30 读成 -22.85，速度环追噪声
+// =高速振动；力矩模式不受影响：0.898 机械回跳×PP=2π≡电角不变，故无感拖动正常）。
+// 修法=内部累积器（罗盘换里程表）：首拍旧公式定相位（无扰交接连续保持；电角逐拍
+// 恒等于 th+offEst，力矩模式行为不变），此后只累加 wrapPi(Δ电角)/PP。
 struct ObsSensor : public Sensor {
+  bool primed = false;
+  float prevTh = 0;       // 上拍观测器电角
+  double mechCont = 0;    // 连续机械角（里程表；double 抗长跑精度损失）
   float getSensorAngle() override {
-    float mech = (obsTh() + offEst - zeroElecCached) / PP;
-    mech = fmodf(mech, 2.0f * (float)M_PI);
-    if (mech < 0) mech += 2.0f * (float)M_PI;
-    return mech;
+    float th = obsTh();
+    if (!primed) {
+      primed = true;
+      prevTh = th;
+      mechCont = (double)((th + offEst - zeroElecCached) / PP);
+    } else {
+      mechCont += (double)(wrapPi(th - prevTh) / PP);
+      prevTh = th;
+    }
+    float twoPi = 2.0f * (float)M_PI;
+    float m = (float)fmod(mechCont, (double)twoPi);
+    if (m < 0.0f) m += twoPi;
+    return m;
   }
+  void resetBookkeeping() { primed = false; }  // vf 复位块调用：重挂时重定相位
 };
 VfSensor vfSensor;
 ObsSensor obsSensor;
@@ -323,6 +342,7 @@ bool slCommands(int argc, char* argv[]) {
     smo.wInt = 0; smo.w = 0; smo.th = 0; smo.locked = false;
     flux.la = 0; flux.lb = 0; flux.th = 0; flux.w = 0; flux.locked = false;
     offEst = 0;
+    obsSensor.resetBookkeeping();  // 连续角里程表重置（重试同权，重挂时重定相位）
     if (obsType == ObsType::Off) {
       obsType = ObsType::Smo;                    // 默认观测器
       Serial.println(F("[SL CFG] obs=smo (vf 自动选默认观测器)"));
@@ -595,7 +615,11 @@ void loop() {
     float the = motor.readEncoderAngle();
     float thc = motor.getState().angle;
     float tho = obsType != ObsType::Off
-                ? (obsTh() + offEst - zeroElecCached) / PP : 0.0f;  // 估计角换算机械域
+                ? (obsTh() + offEst - zeroElecCached) / PP : 0.0f;  // 估计角（回卷显示）
+    // dth 电域对账：估计电角 ±π 回卷使机械域差 wrapPi(the−tho) 成锯齿混叠伪影
+    // （高速 ±2.7 乱摆）；电域差 wrapPi 后 ÷PP 才是真瞬时误差（T-SL ① 判据数据源）
+    float dth = obsType != ObsType::Off
+        ? wrapPi(the * PP + zeroElecCached - (obsTh() + offEst)) / PP : 0.0f;
     float we = motor.readEncoderVelocity();
     float wo = obsType != ObsType::Off ? obsWe() / PP : 0.0f;
     Serial.printf("[SL DBG] ms=%lu src=%s obs=%s vf=%s vfW=%.1f the=%.3f thc=%.3f tho=%.3f dth=%.3f "
@@ -604,7 +628,7 @@ void loop() {
                   srcType == SrcType::Vf ? "on" : "off",
                   (double)vfSensor.wMech,
                   (double)the, (double)thc, (double)tho,
-                  (double)(obsType != ObsType::Off ? wrapPi(the - tho) : 0.0f),
+                  (double)dth,
                   (double)we, (double)wo,
                   (double)motor.getState().iq, (double)motor.readUq(),
                   obsLocked() ? 1 : 0);
