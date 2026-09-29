@@ -246,6 +246,15 @@ void printParams() {
 bool slCommands(int argc, char* argv[]) {
   if (argc < 1) return false;
 
+  // 裸数字=目标值兜底：Studio 桥路径 Commander 认裸数字，但 shell 当班时无人认领
+  // （实测 "15" 被拒→速度环目标 0→交接即自刹停进盲区）——两条派发路径必须等价
+  char c0 = argv[0][0];
+  if ((c0 >= '0' && c0 <= '9') || c0 == '-' || c0 == '+') {
+    motor.setTarget(strtof(argv[0], nullptr));
+    Serial.printf("[SL CFG] target=%.3g\n", (double)motor.getTarget());
+    return true;
+  }
+
   // 角度源切换
   if (!strcmp(argv[0], "src") && argc >= 2) {
     if (argv[1][0] == 'e') {
