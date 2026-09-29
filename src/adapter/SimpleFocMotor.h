@@ -90,8 +90,17 @@ public:
   /// 速度环 PID 积分预置（无扰入环的另一半：目标无扰＋PID 状态无扰）——电压力矩
   /// 模式下 PID 输出即电压，预置当前输出电压使入环第一拍力矩连续不断档（185818 案：
   /// 入环清力矩→摩擦滑停→BEMF 消失→观测器幻觉→环被幻觉喂瞎）。纯新增路径，01 号
-  /// 冻结纪律合规。注：SimpleFOC PID 持久积分成员为 integral_prev（Tustin 形式）。
-  void preloadVelocityIntegral(float volts) { motor_.PID_velocity.integral_prev = volts; }
+  /// 冻结纪律合规。
+  /// 访问途径：SimpleFOC PIDController::integral_prev（Tustin 持久积分）为 protected
+  /// ——不改上游库，经派生类取成员指针（protected 规则允许"通过派生类"访问，所得
+  /// float PIDController::* 可合法作用于任何真实 PIDController 对象）。已用本机
+  /// xtensa-esp32-elf-g++ 8.4（与 Arduino 编译同款）验证编译通过。
+  struct PidIntegralKey : public PIDController {
+    static float PIDController::*member() { return &PidIntegralKey::integral_prev; }
+  };
+  void preloadVelocityIntegral(float volts) {
+    motor_.PID_velocity.*PidIntegralKey::member() = volts;
+  }
   /// 对账真值（无感挂接期间 state.angle 已是估计值，编码器真值走此独立出口，纯读）：
   /// 须先自刷缓存——挂接外部传感器后 loopFOC 只 update 挂接者，AS5600 的
   /// Sensor 基类缓存会冻结（getAngle/getVelocity 只回放缓存值），真值裁判失明。
