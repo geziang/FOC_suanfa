@@ -512,10 +512,14 @@ void loop() {
     float ial = (2.0f / 3.0f) * (i_a - 0.5f * (i_b + i_c));
     float ibe = (1.0f / sqrtf(3.0f)) * (i_b - i_c);
     float uq = motor.readUq(), ud = motor.readUd();
-    // 指令电压反 Park 到 αβ（用观测器自身角度——自洽标准做法）
+    // 指令电压反 Park 到 αβ（用观测器自身角度——自洽标准做法）：
+    // v_α=ud·cosθ−uq·sinθ，v_β=ud·sinθ+uq·cosθ。对齐 SimpleFOC setPhaseVoltage
+    // 语义（矢量施加在 θ+atan2(uq,ud)，ud=0 时=θ+90°）。旧版把 uq/ud 的三角
+    // 角色对调 → 重建矢量落后真实 90° → 误差项≈|Uq|·√2 淹没真 BEMF，观测器
+    // 反向跑飞元凶（2026-09-29 三轮破案定位，自检法：重建后正 Park 回去须还原 (ud,uq)）
     float cth = cosf(obsTh()), sth = sinf(obsTh());
-    float v_a = uq * cth - ud * sth;
-    float v_b = uq * sth + ud * cth;
+    float v_a = ud * cth - uq * sth;
+    float v_b = ud * sth + uq * cth;
     if (obsType == ObsType::Smo)       smo.step(ial, ibe, v_a, v_b, dt);
     else if (obsType == ObsType::Flux) flux.step(ial, ibe, v_a, v_b, dt);
 
