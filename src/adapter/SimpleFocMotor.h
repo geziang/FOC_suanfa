@@ -87,10 +87,18 @@ public:
   float readUd() const { return motor_.voltage.d; }  ///< 指令电压 Ud [V]
   float readZeroElectricAngle() const { return motor_.zero_electric_angle; }
   /// 对账真值（无感挂接期间 state.angle 已是估计值，编码器真值走此独立出口，纯读）：
-  float readEncoderAngle() { return sensor_.getAngle() *
-                                    static_cast<float>(motor_.sensor_direction); }
-  float readEncoderVelocity() { return sensor_.getVelocity() *
-                                      static_cast<float>(motor_.sensor_direction); }
+  /// 须先自刷缓存——挂接外部传感器后 loopFOC 只 update 挂接者，AS5600 的
+  /// Sensor 基类缓存会冻结（getAngle/getVelocity 只回放缓存值），真值裁判失明。
+  /// update() 为一次 I2C 读，探针周期级调用开销可忽略；两访问器各自刷新，
+  /// getVelocity 的差分窗口=两次调用间隔（探针 50ms），数学上不受中间 update 次数影响。
+  float readEncoderAngle() {
+    sensor_.update();
+    return sensor_.getAngle() * static_cast<float>(motor_.sensor_direction);
+  }
+  float readEncoderVelocity() {
+    sensor_.update();
+    return sensor_.getVelocity() * static_cast<float>(motor_.sensor_direction);
+  }
 
   void update() override;
 

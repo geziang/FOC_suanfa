@@ -37,6 +37,8 @@
 //
 // 使用：
 //   vf <rads>        V-F 启动至目标机械速度（自动 src vf；观测器并行收敛）
+//                    —— 无感交付域=中高速（盲区预算 ω_min≈2.6、实测预计 5~10 rad/s，
+//                       行业通病不补丁：切无感建议 ≥10，低速域留作盲区判据实验）
 //   src enc|vf|obs   切角度源（vf 转起来观测器锁定后 src obs=真无感闭环）
 //   obs smo|flux|off 切观测器
 //   vf off           VF 减速停止（回 Idle）
@@ -50,7 +52,7 @@
 //
 // 探针（[SL DBG]，对账数据源）：
 //   the=编码器真值(机械 rad) thc=控制链角 tho=观测器角 dth=真值−估计(机械域)
-//   we=编码器速度 wo=观测器速度 iq=电流 uq=指令电压
+//   we=编码器速度 wo=观测器速度 vfW=VF 当前机械速度（到速判据源） iq=电流 uq=指令电压
 //
 // 纪律：
 //   ① 三环增益冻结不调（要调回 01 号调完抄回）；
@@ -291,6 +293,12 @@ bool slCommands(int argc, char* argv[]) {
       Serial.println(F("用法：vf <rads> | vf on <rads> | vf off"));
       return true;
     }
+    // 状态卫生：每次 VF 启动清观测器积分器与零位估计——上次运行/上轮假锁的
+    // 残留（如 PLL 积分跑飞值 wInt）会污染新一轮收敛，重试必须同权从零开始
+    smo.ia = 0; smo.ib = 0; smo.ea = 0; smo.eb = 0;
+    smo.wInt = 0; smo.w = 0; smo.th = 0; smo.locked = false;
+    flux.la = 0; flux.lb = 0; flux.th = 0; flux.w = 0; flux.locked = false;
+    offEst = 0;
     if (obsType == ObsType::Off) {
       obsType = ObsType::Smo;                    // 默认观测器
       Serial.println(F("[SL CFG] obs=smo (vf 自动选默认观测器)"));
@@ -477,14 +485,22 @@ void loop() {
   static uint32_t lastLoopLogMs = 0;
   static bool lastPowerOk = false;
   static uint32_t lastObsUs = 0;
-
+  static bool powerDisabled = false;   // 欠压失能标记：恢复后回使能（对齐 PowerMonitor
+                                       // "恢复后自动解除"设计；单向失能曾致无感台全静默瘫）
   power.update();
   bool powerOk = power.ok();
   if (powerOk != lastPowerOk) {
     lastPowerOk = powerOk;
     Serial.printf("[FW LOOP] power.ok=%s\n", powerOk ? "true" : "false");
   }
-  if (!powerOk) motor.disable();
+  if (!powerOk) {
+    motor.disable();
+    powerDisabled = true;
+  } else if (powerDisabled) {
+    motor.enable();
+    powerDisabled = false;
+    Serial.println(F("[SL] 电压恢复，电机已回使能"));
+  }
 
   // ---- 观测器步进（控制拍常跑：i_αβ/v_αβ 从库只读访问器取） ----
   uint32_t nowUs = micros();
@@ -538,10 +554,11 @@ void loop() {
                 ? (obsTh() + offEst - zeroElecCached) / PP : 0.0f;  // 估计角换算机械域
     float we = motor.readEncoderVelocity();
     float wo = obsType != ObsType::Off ? obsWe() / PP : 0.0f;
-    Serial.printf("[SL DBG] ms=%lu src=%s obs=%s vf=%s the=%.3f thc=%.3f tho=%.3f dth=%.3f "
+    Serial.printf("[SL DBG] ms=%lu src=%s obs=%s vf=%s vfW=%.1f the=%.3f thc=%.3f tho=%.3f dth=%.3f "
                   "we=%.3f wo=%.3f iq=%.4f uq=%.3f lk=%d\n",
                   (unsigned long)now, srcName(), obsName(),
                   srcType == SrcType::Vf ? "on" : "off",
+                  (double)vfSensor.wMech,
                   (double)the, (double)thc, (double)tho,
                   (double)(obsType != ObsType::Off ? wrapPi(the - tho) : 0.0f),
                   (double)we, (double)wo,

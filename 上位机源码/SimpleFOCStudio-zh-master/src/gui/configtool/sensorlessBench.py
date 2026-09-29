@@ -28,20 +28,25 @@ from src.debugTrace import trace
 
 
 class SensorlessCard(QtWidgets.QGroupBox):
-    """无感控制卡（v2 一键式）：选观测器→一键启动→拧参数看波形。
+    """无感控制卡（v2 一键式·到速判据版）：选观测器→一键启动→拧参数看波形。
 
-    - 一键启动把原手动流程收进 UI 状态机（固件零改动）：
-      ① `obs <选型>` + `vf <速度>` 开环起转（观测器并行收敛）；
-      ② 盯 [SL DBG] 探针 lk 连续 LOCK_STREAK 拍=1（50ms 探针≈250ms 稳锁）
-         → `src obs` 切真无感 → `loop v` 速度闭环（三环冻结档）→ `T <速度>`；
-      ③ 运行中「速度设定」只发 T（不重走流程）；「停止」按态收口（闭环 T 0 / VF 段 vf off）；
-    - 8s 未锁定 → 保持 VF 开环（观测器 VF 期间并行跑：改参数→写入→再点启动即重试）；
-    - 命令仍走小写命令面 + StudioBridge T（目标命令，与 Studio 滑条同路）；
-      [SL CFG] 回读驱动观测器按钮同步（EXP-04 写入必读回）；[SL DBG] 喂实时读数与状态机。
+    - 无感交付域=中高速：低速盲区约 5~10 rad/s（行业通病）不补丁，ENGAGE_SPEED_FLOOR 把门；
+    - 一键启动把原手动流程收进 UI 状态机（vf 命令固件侧每次启动清观测器积分器）：
+      ① `obs <选型>` + `vf <速度>` 开环起转，观测器并行收敛；
+      ② 到速才切——三条件连续 LOCK_STREAK 拍（50ms 探针≈1s）全达标才动手：
+         vfW ≥ max(下限, 0.9×目标)（VF 真到中高速）＋ lk=1（BEMF 过阈）
+         ＋ wo ≥ 0.5×vfW（观测器真跟上速度——低速盲区里 lk 会说谎，速度作证）
+         → `src obs` 切真无感 → `loop v` 速度闭环（三环冻结档）→ 裸数字速度目标；
+      ③ 运行中「速度设定」只发裸数字目标（不重走流程，可下探测盲区边界，失锁告警照实报）；
+    - 目标命令=裸数字：StudioBridge 的 'T' 是力矩类型命令非目标（实测踩坑——
+      T 10 回显 Torque: volt 且 tt 恒 0，速度目标从未设上）；
+    - 超时未达标 → 保持 VF 开开环，改参数→写入→再点启动即重试（固件已清零同权重来）；
+    - [SL CFG] 回读驱动观测器按钮同步（EXP-04 写入必读回）；[SL DBG] 喂实时读数与状态机。
     """
 
-    LOCK_STREAK = 5         # 连续 lk=1 拍数（50ms 探针 ≈ 250ms 稳定锁定）
-    LOCK_TIMEOUT_MS = 8000  # VF 起转到锁定的等待上限
+    LOCK_STREAK = 20           # 三条件连续达标拍数（50ms 探针 ≈ 1s 稳判）
+    ENGAGE_SPEED_FLOOR = 10.0  # [rad/s] 无感交付域下限（低速盲区 5~10，行业通病不补丁）
+    LOCK_TIMEOUT_MS = 10000    # 含 VF 爬坡（40 rad/s 需 5s）+ 收敛 + 余量
 
     def __init__(self, device, parent=None):
         super().__init__('无感控制（03 号 FocKit_sensorless）', parent)
@@ -126,15 +131,25 @@ class SensorlessCard(QtWidgets.QGroupBox):
         if self.device.isConnected:
             self.device.sendCommand(text)
 
-    def readSpeed(self):
+    @staticmethod
+    def _num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def readSpeed(self, lo=10.0):
         try:
             v = float(self.speedInput.text().strip())
         except ValueError:
             QtWidgets.QMessageBox.warning(None, '速度', '目标速度必须是数字(rad/s)。')
             return None
-        if not (0.1 <= v <= 40.0):
+        if not (lo <= v <= 40.0):
             QtWidgets.QMessageBox.warning(
-                None, '速度', '目标速度范围 0.1~40 rad/s（低速盲区预算 ≈2.6，起步建议 ≥10）。')
+                None, '速度', '速度范围 %g~40 rad/s。%s' % (
+                    lo, '一键启动最低=无感交付域下限（低速盲区约 5~10 rad/s，行业通病不补丁）。'
+                    if lo >= 10.0 else
+                    '低于约 5~10 进入无感盲区：状态行会失锁告警，即边界实验现场。'))
             return None
         return v
 
@@ -160,25 +175,26 @@ class SensorlessCard(QtWidgets.QGroupBox):
         if self.state != 'vf_ramp':
             return
         self.state = 'vf_open'
-        self._setState('状态：⚠ 8s 未锁定——保持 VF 开环。改参数→写入→再点「一键启动」重试', '#c62828')
+        self._setState('状态：⚠ 10s 未达标（到速/锁定/跟踪）——保持 VF 开环。'
+                       '改参数→写入→再点「一键启动」重试', '#c62828')
 
     def onSpeedSet(self):
-        v = self.readSpeed()
+        v = self.readSpeed(lo=0.1)   # 运行中调速允许下探（盲区边界实验入口）
         if v is None:
             return
         self.speedValue = v
-        self.send('T %.3g' % v)
+        self.send('%.3g' % v)        # 裸数字=速度目标（'T' 是力矩类型命令，非目标）
 
     def onStop(self):
         self.lockTimer.stop()
         if self.state == 'run':
-            self.send('T 0')
-            self._setState('状态：已停止（T=0 减速中）', '#888')
+            self.send('0')            # 裸数字=目标归零（'T'=力矩类型命令，非目标）
+            self._setState('状态：已停止（目标=0 减速中）', '#888')
         elif self.state in ('vf_ramp', 'vf_open'):
             self.send('vf off')
             self._setState('状态：已停止（VF 减速中）', '#888')
         else:
-            self.send('T 0')
+            self.send('0')
             self.send('vf off')
             self._setState('状态：已停止', '#888')
         self.state = 'stopped'
@@ -198,7 +214,7 @@ class SensorlessCard(QtWidgets.QGroupBox):
         self.lockTimer.stop()
         self.send('src obs')
         self.send('loop v')
-        self.send('T %.3g' % self.speedValue)
+        self.send('%.3g' % self.speedValue)   # 裸数字=速度目标（'T'=力矩类型命令）
         self.state = 'run'
         self._setState('状态：③ 无感闭环中 @%g rad/s · 锁定✓' % self.speedValue, '#2e7d32')
 
@@ -232,14 +248,23 @@ class SensorlessCard(QtWidgets.QGroupBox):
                 fmt(values.get('the'), '%.3f'), fmt(values.get('tho'), '%.3f'),
                 fmt(values.get('dth'), '%+.3f'), values.get('lk', '—')))
 
-            # 状态机喂养：VF 段数锁定拍；运行段随 lk 自愈刷新（失锁=低速盲区观测点）
+            # 状态机喂养：到速才切（三条件连续达标）——低速盲区里 lk 会说谎，速度作证
             if self.state == 'vf_ramp':
-                if values.get('lk') == '1':
-                    self.lkStreak += 1
-                    if self.lkStreak >= self.LOCK_STREAK:
-                        self._engageClosedLoop()
-                else:
-                    self.lkStreak = 0
+                lkOk = values.get('lk') == '1'
+                vfW = self._num(values.get('vfW'))
+                wo = self._num(values.get('wo'))
+                need = max(self.ENGAGE_SPEED_FLOOR,
+                           0.9 * (self.speedValue or 0.0))
+                speedOk = vfW >= need
+                trackOk = vfW > 0.0 and wo >= 0.5 * vfW
+                self.lkStreak = (self.lkStreak + 1
+                                 if (lkOk and speedOk and trackOk) else 0)
+                self._setState(
+                    '状态：① VF 爬速 vfW=%.1f/需≥%.1f · 锁%s · 跟踪%s（wo=%.1f）· 达标 %d/%d'
+                    % (vfW, need, '✓' if lkOk else '×', '✓' if trackOk else '×',
+                       wo, self.lkStreak, self.LOCK_STREAK), '#e65100')
+                if self.lkStreak >= self.LOCK_STREAK:
+                    self._engageClosedLoop()
             elif self.state == 'run':
                 locked = values.get('lk') == '1'
                 self._setState(
