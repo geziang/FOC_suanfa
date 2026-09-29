@@ -89,8 +89,13 @@ constexpr float T_OFF  = 0.2f;      // [s] VF 期间零位偏差 off 的估计�
 void applyGains() {
   motor.setLoopGains(LoopType::CurrentQ, LoopGains(L_PH * WC, R_PH * WC, 0.0f, 0.002f));
   motor.setLoopGains(LoopType::CurrentD, LoopGains(L_PH * WC, R_PH * WC, 0.0f, 0.002f));
+  // 速度环输出限幅域修正：0.5A 持续红线换算电压域 0.5·R≈4.13V——电压力矩模式下
+  // 速度 PID 输出直接落 voltage.q，旧值 0.5（01 号按 foc_current 的 Iq 域设计）被
+  // 错套成 0.5V=仅 60mA，ω≳8.4 rad/s 即无力维持（30 rad/s 巡航需 ≥1.19V；
+  // 185818 案死亡段 uq 钉死 0.500V/iq 钉死 0.0606A 的来源）
   motor.setLoopGains(LoopType::Velocity,
-                     LoopGains(WV * J_EST / KT_M, 10.0f * WV * J_EST / KT_M, 0.0f, 0.01f, 0.5f));
+                     LoopGains(WV * J_EST / KT_M, 10.0f * WV * J_EST / KT_M, 0.0f, 0.01f,
+                               0.5f * R_PH));
   motor.setLoopGains(LoopType::Position, LoopGains(WP));
 }
 
@@ -366,29 +371,36 @@ bool slCommands(int argc, char* argv[]) {
   // 三环会话（同 01 号 + off；src=vf 时切三环会话会先撤 VF 源——VF 是启动器不是控制态）
   if (!strcmp(argv[0], "loop") && argc >= 2) {
     stepOn = false;
-    motor.setTarget(0);
     if (argv[1][0] == 'v') {
       if (srcType == SrcType::Vf) { motor.detachExternalSensor(); srcType = SrcType::Enc; }
       motor.setMode(ControlMode::Velocity);
       if (srcType == SrcType::Obs) {
-        // 无扰闭环进入：目标=当前速度起步（0 目标会从 30 rad/s 瞬间反刹；
-        // 有感对照路径保持 0 起步的阶跃实验语义不变）
+        // 无扰闭环进入（bumpless 全套）：目标=当前速度 + PID 积分预置=当前输出电压，
+        // 入环第一拍力矩连续不断档。旧公共前缀 setTarget(0) 在力矩域执行=拖动力矩瞬间
+        // 归零→摩擦 ~135ms 滑停→BEMF 消失→观测器幻觉→环被幻觉喂瞎（185818 案：电机
+        // 原地发抖、目标失效）。有感对照路径保持 0 起步阶跃语义
+        motor.preloadVelocityIntegral(motor.readUq());
         motor.setVelocityTarget(motor.getVelocity());
-        Serial.printf("[SL ID] 闭环无扰进入：目标=当前速度 %.2f rad/s\n",
-                      (double)motor.getVelocity());
+        Serial.printf("[SL ID] 闭环无扰进入：目标=当前速度 %.2f rad/s，积分预置 %.3fV\n",
+                      (double)motor.getVelocity(), (double)motor.readUq());
+      } else {
+        motor.setTarget(0);   // 有感对照：0 起步阶跃语义
       }
       stepAmp = 3.0f; stepPeriodMs = 2000;
       Serial.println(F("[SL] 速度环会话（同增益有感/无感对照：enc 与 obs 各跑一遍 step）"));
     } else if (argv[1][0] == 'p') {
       if (srcType == SrcType::Vf) { motor.detachExternalSensor(); srcType = SrcType::Enc; }
+      motor.setTarget(0);
       motor.setMode(ControlMode::Position);
       stepAmp = 1.5708f; stepPeriodMs = 4000;
       Serial.println(F("[SL] 位置环会话"));
     } else if (argv[1][0] == 't') {
+      motor.setTarget(0);
       motor.setMode(ControlMode::Torque);
       stepAmp = 0.01f; stepPeriodMs = 3000;
       Serial.println(F("[SL] 电压力矩会话"));
     } else if (argv[1][0] == 'o') {
+      motor.setTarget(0);
       motor.setMode(ControlMode::Idle);
       Serial.println(F("[SL] Idle"));
     } else return false;

@@ -86,6 +86,12 @@ public:
   float readUq() const { return motor_.voltage.q; }  ///< 指令电压 Uq [V]
   float readUd() const { return motor_.voltage.d; }  ///< 指令电压 Ud [V]
   float readZeroElectricAngle() const { return motor_.zero_electric_angle; }
+
+  /// 速度环 PID 积分预置（无扰入环的另一半：目标无扰＋PID 状态无扰）——电压力矩
+  /// 模式下 PID 输出即电压，预置当前输出电压使入环第一拍力矩连续不断档（185818 案：
+  /// 入环清力矩→摩擦滑停→BEMF 消失→观测器幻觉→环被幻觉喂瞎）。纯新增路径，01 号
+  /// 冻结纪律合规。注：SimpleFOC PID 持久积分成员为 integral_prev（Tustin 形式）。
+  void preloadVelocityIntegral(float volts) { motor_.PID_velocity.integral_prev = volts; }
   /// 对账真值（无感挂接期间 state.angle 已是估计值，编码器真值走此独立出口，纯读）：
   /// 须先自刷缓存——挂接外部传感器后 loopFOC 只 update 挂接者，AS5600 的
   /// Sensor 基类缓存会冻结（getAngle/getVelocity 只回放缓存值），真值裁判失明。
