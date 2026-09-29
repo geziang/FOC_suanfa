@@ -39,7 +39,9 @@
 //   vf <rads>        V-F 启动至目标机械速度（自动 src vf；观测器并行收敛）
 //                    —— 无感交付域=中高速（盲区预算 ω_min≈2.6、实测预计 5~10 rad/s，
 //                       行业通病不补丁：切无感建议 ≥10，低速域留作盲区判据实验）
-//   src enc|vf|obs   切角度源（vf 转起来观测器锁定后 src obs=真无感闭环）
+//   src enc|vf|obs   切角度源（vf 转起来观测器锁定后 src obs=真无感闭环；
+//                    VF→obs 无扰切换：offEst 吸收瞬时帧差，控制角连续不跳变，
+//                    loop v 无感路径目标=当前速度起步——均防切换/入环反刹）
 //   obs smo|flux|off 切观测器
 //   vf off           VF 减速停止（回 Idle）
 //   loop v|p|t|off   三环会话（同 01 号；速度/位置阶跃判据=有感黄金对照复跑）
@@ -272,6 +274,14 @@ bool slCommands(int argc, char* argv[]) {
         Serial.println(F("[SL] 警告：观测器未锁定（BEMF 低于阈值/盲区）——静止切入会失锁，"
                          "建议 vf 转起来后再切"));
       }
+      if (srcType == SrcType::Vf) {
+        // 无扰切换（bumpless）：切换拍把 VF 帧与观测器帧的瞬时差吸进 offEst，
+        // 控制角连续 → 电压矢量方向不跳变（实测 135° 电角跳变=全电压反打刹停的根治）。
+        // 不清力矩：清了会开摩擦滑停窗（30 rad/s 约 135ms 停死）；方向连续后无乱打可防
+        float snap = wrapPi((vfSensor.thE + zeroElecCached) - (obsTh() + offEst));
+        offEst = wrapPi(offEst + snap);
+        Serial.printf("[SL ID] 无扰切换：offEst 吸收 %.3f rad，控制角连续\n", (double)snap);
+      }
       motor.attachExternalSensor(&obsSensor);
       srcType = SrcType::Obs;
     } else return false;
@@ -360,6 +370,13 @@ bool slCommands(int argc, char* argv[]) {
     if (argv[1][0] == 'v') {
       if (srcType == SrcType::Vf) { motor.detachExternalSensor(); srcType = SrcType::Enc; }
       motor.setMode(ControlMode::Velocity);
+      if (srcType == SrcType::Obs) {
+        // 无扰闭环进入：目标=当前速度起步（0 目标会从 30 rad/s 瞬间反刹；
+        // 有感对照路径保持 0 起步的阶跃实验语义不变）
+        motor.setVelocityTarget(motor.getVelocity());
+        Serial.printf("[SL ID] 闭环无扰进入：目标=当前速度 %.2f rad/s\n",
+                      (double)motor.getVelocity());
+      }
       stepAmp = 3.0f; stepPeriodMs = 2000;
       Serial.println(F("[SL] 速度环会话（同增益有感/无感对照：enc 与 obs 各跑一遍 step）"));
     } else if (argv[1][0] == 'p') {
@@ -532,9 +549,11 @@ void loop() {
     if (obsType == ObsType::Smo)       smo.step(ial, ibe, v_a, v_b, dt);
     else if (obsType == ObsType::Flux) flux.step(ial, ibe, v_a, v_b, dt);
 
-    // VF 期间零位偏差估计：θ_elec_true = thE + zeroElec（VF 传感器有效电角）
+    // VF 期间零位偏差估计：目标=控制角 (obsTh+offEst) 一阶收敛到 VF 帧 (thE+zeroElec)。
+    // err 必须含 offEst（旧版漏减 → err 与 offEst 无关 → 开环积分速度失配，
+    // offEst 随机游走到 ±3——30 rad/s 实测 off=-2.85 的来源）
     if (srcType == SrcType::Vf && obsType != ObsType::Off && obsLocked()) {
-      float err = wrapPi((vfSensor.thE + zeroElecCached) - obsTh());
+      float err = wrapPi((vfSensor.thE + zeroElecCached) - (obsTh() + offEst));
       offEst = wrapPi(offEst + dt / T_OFF * err);
     }
   }
